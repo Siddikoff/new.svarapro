@@ -1,0 +1,55 @@
+.add-wallet-window {
+  width: 278px;
+  height: 155px;
+  background-color: #333333;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden; /* Ensures buttons with squared corners fit into the rounded container */
+}
+
+.add-wallet-content {
+  /* This will hold the content above the buttons */
+  flex-grow: 1;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-wallet-text {
+  font-weight: 500;
+  font-size: 16px;
+  line-height: 150%;
+  letter-spacing: -0.011em;
+  text-align: center;
+  color: white;
+}
+
+.add-wallet-buttons {
+  display: flex;
+  width: 100%;
+}
+
+.add-wallet-button {
+  height: 41px;
+  width: 139px;
+  border: none;
+  cursor: pointer;
+  font-size: 16px; /* Example font size */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-wallet-add-button {
+  color: black;
+  background: linear-gradient(180deg, #FFC53F 7.5%, #AF6600 100%);
+}
+
+.add-wallet-cancel-button {
+  background-color: #333333;
+  color: white;
+  border-top: 1px solid #444; /* Adding a subtle separator */
+}

@@ -1,0 +1,52 @@
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(5px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.menu-button {
+  height: 54px;
+  display: flex;
+  align-items: center;
+  padding: 0 15px;
+  width: 100%;
+  background-color: transparent;
+  border: none;
+  color: white;
+}
+
+.menu-button:not(:last-child) {
+}
+
+.menu-button-text {
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 150%;
+  letter-spacing: -0.011em;
+  margin-left: 10px;
+  color: #FFFFFF;
+  flex-grow: 1;
+  text-align: center;
+}
+
+.divider {
+  width: 302px;
+  border-width: 1px;
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.05);
+}

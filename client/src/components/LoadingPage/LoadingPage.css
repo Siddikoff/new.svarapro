@@ -1,0 +1,30 @@
+.loading-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #131217;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.loading-logo {
+  width: 376px; /* или подходящий размер */
+  height: 270px;
+  object-fit: contain; /* сохраняет пропорции */
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+.loading-badge {
+  margin-top: 40px; /* отступ от логотипа */
+}
+
+@keyframes pulse {
+  0% { opacity: 0.8; transform: scale(0.95); }
+  50% { opacity: 1; transform: scale(1.05); }
+  100% { opacity: 0.8; transform: scale(0.95); }
+}

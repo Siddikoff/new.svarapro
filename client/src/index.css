@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  /* iOS Safari fixes */
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* iOS Safari viewport fixes */
+@supports (-webkit-touch-callout: none) {
+  .game-container {
+    min-height: -webkit-fill-available;
+  }
+  
+  .game-table {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+  }
+  
+  .player-spot {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+  }
+}
+
+.slide-panel-enter {
+  opacity: 0;
+  transform: translateY(-100%);
+}
+.slide-panel-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 300ms, transform 300ms;
+}
+.slide-panel-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+.slide-panel-exit-active {
+  opacity: 0;
+  transform: translateY(-100%);
+  transition: opacity 300ms, transform 300ms;
+}
+
+@keyframes pulse-svara {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  16.5% { transform: scale(1.15); opacity: 1; }
+  33% { transform: scale(1); opacity: 0.8; }
+  49.5% { transform: scale(1.15); opacity: 1; }
+  66% { transform: scale(1); opacity: 0.8; }
+  82.5% { transform: scale(1.15); opacity: 1; }
+}
+
+.animate-pulse-svara {
+  animation: pulse-svara 2s ease-in-out;
+}
+
+@keyframes slide-up-fade-in {
+  0% {
+    transform: translateY(100vh);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up-fade-in 0.3s ease-out;
+}
+
+/* Button press effect */
+@keyframes button-press {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.85); }
+  100% { transform: scale(1); }
+}
+
+.button-press {
+  animation: button-press 0.5s ease-out;
+  transform-origin: center;
+}
+
+.action-button-shadow {
+  filter: drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.4));
+}

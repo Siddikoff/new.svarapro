@@ -1,0 +1,5 @@
+{
+  "unknown_error": "An unknown error occurred. Please try again later.",
+  "network_error": "Network connection error. Please check your internet connection.",
+  "auth_validation_failed": "Authentication failed. Please restart the app."
+}

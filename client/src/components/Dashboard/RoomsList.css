@@ -1,0 +1,25 @@
+.adaprive_font {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+@media (max-width: 373px) {
+    .adaprive_font {
+        font-size: 17px;
+
+    }
+}
+
+@media (max-width: 352px) {
+    .adaprive_font {
+        font-size: 16px;
+
+    }
+}
+
+@media (max-width: 340px) {
+    .adaprive_font {
+        font-size: 15px;
+
+    }
+}

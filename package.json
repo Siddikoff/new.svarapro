@@ -1,0 +1,17 @@
+{
+  "name": "svara-pro-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "pnpm --filter svara-pro-server build && pnpm --filter svara-pro-bot build",
+    "build:client": "pnpm --filter svara-pro-client build",
+    "start": "pm2-runtime start ecosystem.config.js",
+    "lint": "pnpm --filter svara-pro-server lint && pnpm --filter svara-pro-bot lint && pnpm --filter svara-pro-client lint"
+  },
+  "devDependencies": {
+    "pm2": "^5.4.2"
+  },
+  "dependencies": {
+    "tailwind-merge": "^3.3.1"
+  }
+}

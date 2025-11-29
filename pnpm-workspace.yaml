@@ -1,0 +1,6 @@
+packages:
+  - 'client'
+  - 'server'
+  - 'bot'
+  - 'service-bot'
+  - 'service-bot'
