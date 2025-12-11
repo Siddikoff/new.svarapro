@@ -173,16 +173,17 @@ export class AdminController {
     const totalStats = await this.getPeriodStats(new Date(0), now);
 
     return {
-      day: { ...dayStats, period: 'day' },
-      week: { ...weekStats, period: 'week' },
-      month: { ...monthStats, period: 'month' },
-      total: { ...totalStats, period: 'total' },
+      day: { deposits: dayStats.deposits, withdrawals: dayStats.withdrawals },
+      week: { deposits: weekStats.deposits, withdrawals: weekStats.withdrawals },
+      month: { deposits: monthStats.deposits, withdrawals: monthStats.withdrawals },
+      total: { deposits: totalStats.deposits, withdrawals: totalStats.withdrawals },
     };
   }
 
   private async getPeriodStats(startDate: Date, endDate: Date) {
-    // Статистика транзакций
-    const [deposits, withdrawals] = (await Promise.all([
+    // Общие транзакции
+    const [deposits, withdrawals, cryptoDeposits, cryptoWithdrawals, fiatDeposits, fiatWithdrawals] = (await Promise.all([
+      // Все депозиты
       this.transactionRepository
         .createQueryBuilder('transaction')
         .where('transaction.type = :type', { type: 'deposit' })
@@ -194,6 +195,7 @@ export class AdminController {
         .select('SUM(transaction.amount)', 'total')
         .getRawOne(),
 
+      // Все выводы
       this.transactionRepository
         .createQueryBuilder('transaction')
         .where('transaction.type = :type', { type: 'withdraw' })
@@ -204,26 +206,71 @@ export class AdminController {
         })
         .select('SUM(transaction.amount)', 'total')
         .getRawOne(),
-    ])) as [SumResult, SumResult];
 
-    // Количество игр
-    const gamesCount = await this.roomRepository
-      .createQueryBuilder('room')
-      .where('room.createdAt BETWEEN :start AND :end', {
-        start: startDate,
-        end: endDate,
-      })
-      .getCount();
+      // Крипто депозиты (alfabit)
+      this.transactionRepository
+        .createQueryBuilder('transaction')
+        .where('transaction.type = :type', { type: 'deposit' })
+        .andWhere('transaction.status = :status', { status: 'complete' })
+        .andWhere('transaction.payment_provider = :provider', { provider: 'alfabit' })
+        .andWhere('transaction.createdAt BETWEEN :start AND :end', {
+          start: startDate,
+          end: endDate,
+        })
+        .select('SUM(transaction.amount)', 'total')
+        .getRawOne(),
 
-    const depositsTotal = parseFloat(deposits?.total || '0') || 0;
-    const withdrawalsTotal = parseFloat(withdrawals?.total || '0') || 0;
-    const profit = depositsTotal - withdrawalsTotal;
+      // Крипто выводы (alfabit)
+      this.transactionRepository
+        .createQueryBuilder('transaction')
+        .where('transaction.type = :type', { type: 'withdraw' })
+        .andWhere('transaction.status = :status', { status: 'complete' })
+        .andWhere('transaction.payment_provider = :provider', { provider: 'alfabit' })
+        .andWhere('transaction.createdAt BETWEEN :start AND :end', {
+          start: startDate,
+          end: endDate,
+        })
+        .select('SUM(transaction.amount)', 'total')
+        .getRawOne(),
+
+      // Фиат депозиты (nirvanapay)
+      this.transactionRepository
+        .createQueryBuilder('transaction')
+        .where('transaction.type = :type', { type: 'deposit' })
+        .andWhere('transaction.status = :status', { status: 'complete' })
+        .andWhere('transaction.payment_provider = :provider', { provider: 'nirvanapay' })
+        .andWhere('transaction.createdAt BETWEEN :start AND :end', {
+          start: startDate,
+          end: endDate,
+        })
+        .select('SUM(transaction.amount)', 'total')
+        .getRawOne(),
+
+      // Фиат выводы (nirvanapay)
+      this.transactionRepository
+        .createQueryBuilder('transaction')
+        .where('transaction.type = :type', { type: 'withdraw' })
+        .andWhere('transaction.status = :status', { status: 'complete' })
+        .andWhere('transaction.payment_provider = :provider', { provider: 'nirvanapay' })
+        .andWhere('transaction.createdAt BETWEEN :start AND :end', {
+          start: startDate,
+          end: endDate,
+        })
+        .select('SUM(transaction.amount)', 'total')
+        .getRawOne(),
+    ])) as [SumResult, SumResult, SumResult, SumResult, SumResult, SumResult];
 
     return {
-      deposits: depositsTotal,
-      withdrawals: withdrawalsTotal,
-      profit,
-      gamesCount,
+      deposits: parseFloat(deposits?.total || '0') || 0,
+      withdrawals: parseFloat(withdrawals?.total || '0') || 0,
+      crypto: {
+        deposits: parseFloat(cryptoDeposits?.total || '0') || 0,
+        withdrawals: parseFloat(cryptoWithdrawals?.total || '0') || 0,
+      },
+      fiat: {
+        deposits: parseFloat(fiatDeposits?.total || '0') || 0,
+        withdrawals: parseFloat(fiatWithdrawals?.total || '0') || 0,
+      },
     };
   }
 }

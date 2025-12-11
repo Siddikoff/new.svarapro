@@ -1,11 +1,15 @@
 import axios from "axios";
 
+export interface PaymentTypeStats {
+  deposits: number;
+  withdrawals: number;
+}
+
 export interface Stats {
   deposits: number;
   withdrawals: number;
-  profit: number;
-  gamesCount: number;
-  period: string;
+  crypto: PaymentTypeStats;
+  fiat: PaymentTypeStats;
 }
 
 export interface StatsResponse {

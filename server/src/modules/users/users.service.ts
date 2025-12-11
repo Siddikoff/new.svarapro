@@ -17,6 +17,42 @@ export class UsersService {
     private usersRepository: Repository<User>,
   ) {}
 
+  async ensureUser(
+    telegramId: string,
+    userData?: {
+      username?: string;
+      firstName?: string;
+      lastName?: string;
+    },
+  ): Promise<User> {
+    let user = await this.usersRepository.findOne({
+      where: { telegramId },
+    });
+
+    if (!user) {
+      user = this.usersRepository.create({
+        telegramId,
+        username: userData?.username || null,
+        firstName: userData?.firstName || null,
+        lastName: userData?.lastName || null,
+        balance: 0,
+        refBalance: 0,
+        refBonus: 0,
+        totalDeposit: 0,
+      });
+      await this.usersRepository.save(user);
+      console.log(`New user created via ensureUser: ${telegramId}`);
+    } else {
+      // Update user data if provided
+      if (userData?.username) user.username = userData.username;
+      if (userData?.firstName) user.firstName = userData.firstName;
+      if (userData?.lastName) user.lastName = userData.lastName;
+      await this.usersRepository.save(user);
+    }
+
+    return user;
+  }
+
   async getProfile(telegramId: string): Promise<ProfileDto> {
     const user = await this.usersRepository.findOne({
       where: { telegramId },

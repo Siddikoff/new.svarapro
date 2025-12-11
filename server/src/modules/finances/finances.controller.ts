@@ -5,10 +5,13 @@ import {
   Get,
   Param,
   BadRequestException,
+  Query,
 } from '@nestjs/common';
 import { FinancesService } from './finances.service';
 import { Logger } from '@nestjs/common';
 import { CallbackDto } from './dto/callback.dto';
+import { GetBanksDto } from './dto/get-banks.dto';
+import { RubPaymentMethod } from '../../services/noros.service';
 
 @Controller('finances')
 export class FinancesController {
@@ -120,5 +123,180 @@ export class FinancesController {
     // DEBUG log removed
     const balances = await this.financesService.getMerchantBalances();
     return balances;
+  }
+
+  @Get('fiat/banks')
+  async getBanks(@Query() getBanksDto: GetBanksDto) {
+    this.logger.log(`Request to get banks for currency: ${getBanksDto.currency}, amount: ${getBanksDto.amount}, method: ${getBanksDto.method}`);
+    return this.financesService.getBanks(getBanksDto.currency, getBanksDto.amount, getBanksDto.method);
+  }
+
+  @Post('fiat/transaction')
+  async createFiatTransaction(
+    @Body()
+    body: {
+      telegramId: string;
+      amount: number;
+      bankId: number;
+      currency: string;
+      userInfo?: {
+        ip?: string;
+        ua?: string;
+        email?: string;
+        id?: string;
+        fio?: string;
+        card?: string;
+      };
+      method?: RubPaymentMethod;
+    },
+  ) {
+    if (
+      !body.telegramId ||
+      typeof body.telegramId !== 'string' ||
+      body.telegramId.trim() === ''
+    ) {
+      this.logger.error(`Invalid or missing telegramId: ${body.telegramId}`);
+      throw new BadRequestException(
+        'telegramId is required and must be a non-empty string',
+      );
+    }
+
+    if (!body.amount || body.amount <= 0) {
+      this.logger.error(`Invalid amount: ${body.amount}`);
+      throw new BadRequestException('amount must be greater than 0');
+    }
+
+    if (!body.bankId || typeof body.bankId !== 'number') {
+      this.logger.error(`Invalid or missing bankId: ${body.bankId}`);
+      throw new BadRequestException(
+        'bankId is required and must be a number',
+      );
+    }
+
+    if (
+      !body.currency ||
+      typeof body.currency !== 'string' ||
+      body.currency.trim() === ''
+    ) {
+      this.logger.error(`Invalid or missing currency: ${body.currency}`);
+      throw new BadRequestException(
+        'currency is required and must be a non-empty string',
+      );
+    }
+
+    const result = await this.financesService.initFiatTransaction(
+      body.telegramId,
+      body.amount,
+      body.bankId,
+      body.currency,
+      body.userInfo,
+      body.method,
+    );
+
+    this.logger.log(
+      `Noros fiat transaction created: norosId=${result.transaction.tracker_id}, clientID=${result.transaction.client_transaction_id}`,
+    );
+
+    // Return the new response structure from the service
+    return {
+      norosId: result.transaction.tracker_id,
+      clientID: result.transaction.client_transaction_id,
+      receiver: result.receiver,
+      bankName: result.bankName,
+      recipientName: result.recipientName,
+      manual: result.manual,
+    };
+  }
+
+
+
+  @Post('fiat/withdraw')
+  async createFiatWithdraw(
+    @Body()
+    body: {
+      telegramId: string;
+      amount: number;
+      currency: string;
+      number: string; // card/account number
+      bankname: string;
+      owner: string; // recipient name
+      method?: RubPaymentMethod;
+    },
+  ) {
+    // A series of validation checks for the request body
+    if (
+      !body.telegramId ||
+      typeof body.telegramId !== 'string' ||
+      body.telegramId.trim() === ''
+    ) {
+      this.logger.error(`Invalid or missing telegramId: ${body.telegramId}`);
+      throw new BadRequestException(
+        'telegramId is required and must be a non-empty string',
+      );
+    }
+    if (!body.amount || body.amount <= 0) {
+      this.logger.error(`Invalid amount: ${body.amount}`);
+      throw new BadRequestException('amount must be greater than 0');
+    }
+    if (
+      !body.currency ||
+      typeof body.currency !== 'string' ||
+      body.currency.trim() === ''
+    ) {
+      this.logger.error(`Invalid or missing currency: ${body.currency}`);
+      throw new BadRequestException(
+        'currency is required and must be a non-empty string',
+      );
+    }
+    if (
+      !body.number ||
+      typeof body.number !== 'string' ||
+      body.number.trim() === ''
+    ) {
+      this.logger.error(`Invalid or missing number: ${body.number}`);
+      throw new BadRequestException(
+        'number is required and must be a non-empty string',
+      );
+    }
+    if (
+      !body.bankname ||
+      typeof body.bankname !== 'string' ||
+      body.bankname.trim() === ''
+    ) {
+      this.logger.error(`Invalid or missing bankname: ${body.bankname}`);
+      throw new BadRequestException(
+        'bankname is required and must be a non-empty string',
+      );
+    }
+    if (
+      !body.owner ||
+      typeof body.owner !== 'string' ||
+      body.owner.trim() === ''
+    ) {
+      this.logger.error(`Invalid or missing owner: ${body.owner}`);
+      throw new BadRequestException(
+        'owner is required and must be a non-empty string',
+      );
+    }
+
+    const result = await this.financesService.initFiatWithdraw(
+      body.telegramId,
+      body.amount,
+      body.currency,
+      body.number,
+      body.bankname,
+      body.owner,
+      body.method,
+    );
+
+    this.logger.log(
+      `Noros fiat withdraw created: payoutId=${result.payoutId}, clientID=${result.transaction.client_transaction_id}`,
+    );
+
+    return {
+      payoutId: result.payoutId,
+      clientID: result.transaction.client_transaction_id,
+      status: 'pending',
+    };
   }
 }

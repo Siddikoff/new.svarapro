@@ -77,4 +77,48 @@ export class Transaction {
     nullable: true,
   })
   transaction_hash: string | undefined;
+
+  @Column({
+    type: 'varchar',
+    length: 32,
+    default: 'alfabit',
+  })
+  payment_provider: string;
+
+  @Column({
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  token: string | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (value: number | null) => value,
+      from: (value: string | null) => (value ? parseFloat(value) : null),
+    },
+  })
+  fiat_amount: number | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (value: number | null) => value,
+      from: (value: string | null) => (value ? parseFloat(value) : null),
+    },
+  })
+  rate: number | null;
+
+  @Column({
+    type: 'jsonb',
+    nullable: true,
+  })
+  extra: Record<string, any> | null;
 }

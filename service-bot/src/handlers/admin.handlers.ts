@@ -322,31 +322,58 @@ export class AdminHandlers {
   }
 
   // Показать статистику
-  async showStats(ctx: ServiceBotContext) {
+  async showStats(ctx: ServiceBotContext, filter: 'all' | 'crypto' | 'fiat' = 'all') {
     const locale = "ru";
 
     try {
       const stats = await this.statsService.getStats();
 
-      const message =
-        `📊 **Статистика**\n\n` +
-        `📅 **${getMessage(locale, "admin.period.day")}**\n` +
-        `💰 Вводы: ${stats.day.deposits} USDT\n` +
-        `💸 Выводы: ${stats.day.withdrawals} USDT\n\n` +
-        `📅 **${getMessage(locale, "admin.period.week")}**\n` +
-        `💰 Вводы: ${stats.week.deposits} USDT\n` +
-        `💸 Выводы: ${stats.week.withdrawals} USDT\n\n` +
-        `📅 **${getMessage(locale, "admin.period.month")}**\n` +
-        `💰 Вводы: ${stats.month.deposits} USDT\n` +
-        `💸 Выводы: ${stats.month.withdrawals} USDT\n\n` +
-        `📅 **${getMessage(locale, "admin.period.total")}**\n` +
-        `💰 Вводы: ${stats.total.deposits} USDT\n` +
-        `💸 Выводы: ${stats.total.withdrawals} USDT`;
+      let message = `📊 **Статистика**\n\n`;
+
+      const formatPeriod = (periodName: string, periodStats: any) => {
+        let result = `📅 **${periodName}**\n`;
+
+        if (filter === 'all') {
+          result += `💰 Вводы: ${periodStats.deposits.toFixed(2)} USDT\n`;
+          result += `💸 Выводы: ${periodStats.withdrawals.toFixed(2)} USDT\n`;
+          result += `  ├─ 🔷 Крипта: ${periodStats.crypto.deposits.toFixed(2)} / ${periodStats.crypto.withdrawals.toFixed(2)} USDT\n`;
+          result += `  └─ 💵 Фиат: ${periodStats.fiat.deposits.toFixed(2)} / ${periodStats.fiat.withdrawals.toFixed(2)} USDT\n`;
+        } else if (filter === 'crypto') {
+          result += `🔷 **Крипта**\n`;
+          result += `💰 Вводы: ${periodStats.crypto.deposits.toFixed(2)} USDT\n`;
+          result += `💸 Выводы: ${periodStats.crypto.withdrawals.toFixed(2)} USDT\n`;
+        } else if (filter === 'fiat') {
+          result += `💵 **Фиат**\n`;
+          result += `💰 Вводы: ${periodStats.fiat.deposits.toFixed(2)} USDT\n`;
+          result += `💸 Выводы: ${periodStats.fiat.withdrawals.toFixed(2)} USDT\n`;
+        }
+
+        return result;
+      };
+
+      message += formatPeriod(getMessage(locale, "admin.period.day"), stats.day) + '\n';
+      message += formatPeriod(getMessage(locale, "admin.period.week"), stats.week) + '\n';
+      message += formatPeriod(getMessage(locale, "admin.period.month"), stats.month) + '\n';
+      message += formatPeriod(getMessage(locale, "admin.period.total"), stats.total);
 
       await ctx.reply(message, {
         parse_mode: "Markdown",
         reply_markup: {
           inline_keyboard: [
+            [
+              {
+                text: filter === 'all' ? '✅ Всё' : 'Всё',
+                callback_data: "admin_stats_all",
+              },
+              {
+                text: filter === 'crypto' ? '✅ Крипта' : 'Крипта',
+                callback_data: "admin_stats_crypto",
+              },
+              {
+                text: filter === 'fiat' ? '✅ Фиат' : 'Фиат',
+                callback_data: "admin_stats_fiat",
+              },
+            ],
             [
               {
                 text: getMessage(locale, "admin.back"),

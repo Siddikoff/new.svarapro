@@ -8,6 +8,7 @@ import { CallbackProcessor } from './callback.processor'; // Добавляем 
 import { Transaction } from '../../entities/transactions.entity';
 import { User } from '../../entities/user.entity';
 import { ApiService } from '../../services/api.service';
+import { NorosService } from '../../services/noros.service';
 import { TelegramService } from '../../services/telegram.service';
 
 @Module({
@@ -21,6 +22,7 @@ import { TelegramService } from '../../services/telegram.service';
   providers: [
     FinancesService,
     ApiService,
+    NorosService,
     TransactionGateway,
     CallbackProcessor,
     TelegramService,

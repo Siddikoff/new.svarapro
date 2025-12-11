@@ -33,8 +33,11 @@ export class InitialSchema1700000000000 implements MigrationInterface {
       CREATE TABLE "admins" (
         "id" SERIAL PRIMARY KEY,
         "telegramId" character varying NOT NULL UNIQUE,
+        "passwordHash" character varying NOT NULL,
         "isActive" boolean NOT NULL DEFAULT true,
-        "createdAt" TIMESTAMP NOT NULL DEFAULT now()
+        "lastLoginAt" TIMESTAMP,
+        "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+        "updatedAt" TIMESTAMP NOT NULL DEFAULT now()
       )
     `);
 
@@ -51,6 +54,11 @@ export class InitialSchema1700000000000 implements MigrationInterface {
         "tracker_id" character varying(128) NOT NULL UNIQUE,
         "client_transaction_id" character varying(36),
         "transaction_hash" character varying(128),
+        "payment_provider" character varying(32) NOT NULL DEFAULT 'alfabit',
+        "token" character varying(64),
+        "fiat_amount" decimal(12,2),
+        "rate" decimal(12,2),
+        "extra" jsonb,
         "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
         "updatedAt" TIMESTAMP NOT NULL DEFAULT now()
       )
@@ -66,6 +74,7 @@ export class InitialSchema1700000000000 implements MigrationInterface {
         "password" character varying,
         "status" character varying NOT NULL DEFAULT 'waiting',
         "maxPlayers" integer NOT NULL DEFAULT 6,
+        "isSystem" boolean NOT NULL DEFAULT false,
         "createdAt" TIMESTAMP NOT NULL DEFAULT now()
       )
     `);

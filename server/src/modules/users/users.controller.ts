@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Body,
+  Param,
   UseGuards,
   Request,
   UnauthorizedException,
@@ -20,6 +21,36 @@ interface AuthenticatedRequest extends Request {
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @Post('ensure')
+  async ensureUser(
+    @Body()
+    body: {
+      telegramId: string;
+      username?: string;
+      firstName?: string;
+      lastName?: string;
+    },
+  ) {
+    const user = await this.usersService.ensureUser(body.telegramId, {
+      username: body.username,
+      firstName: body.firstName,
+      lastName: body.lastName,
+    });
+
+    return {
+      id: user.id,
+      telegramId: user.telegramId,
+      username: user.username,
+      balance: user.balance,
+      created: true,
+    };
+  }
+
+  @Get('profile/:telegramId')
+  async getProfileByTelegramId(@Param('telegramId') telegramId: string) {
+    return this.usersService.getProfile(telegramId);
+  }
 
   @UseGuards(JwtAuthGuard)
   @Get('profile')
