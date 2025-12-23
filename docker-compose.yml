@@ -1,27 +1,27 @@
 version: '3.8'
 
 services:
-#  nginx:
-#    build:
-#      context: .
-#      dockerfile: nginx/Dockerfile
-#      args:
-#        - VITE_APP_URL=${VITE_APP_URL}
-#        - VITE_WS_URL=${VITE_WS_URL}
-#        - VITE_API_URL=${VITE_API_URL}
-#        - NODE_IMAGE=${NODE_IMAGE}
-#        - NGINX_IMAGE=${NGINX_IMAGE}
-#
-#    ports:
-#      - "80:80"
-#      - "443:443"
-#    depends_on:
-#      - app
-#    volumes:
-#      - /etc/letsencrypt:/etc/letsencrypt:ro
-#    networks:
-#      - app-network
-#    restart: unless-stopped
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+      args:
+        - VITE_APP_URL=${VITE_APP_URL}
+        - VITE_WS_URL=${VITE_WS_URL}
+        - VITE_API_URL=${VITE_API_URL}
+        - NODE_IMAGE=${NODE_IMAGE}
+        - NGINX_IMAGE=${NGINX_IMAGE}
+
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - app
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    networks:
+      - app-network
+    restart: unless-stopped
 
   app:
     build:
