@@ -844,10 +844,7 @@ export class AdminHandlers {
   // System Wallet Reset Logic
   async handleSystemWalletReset(ctx: ServiceBotContext) {
     const message =
-      `⚠️ *ВНИМАНИЕ*\\n` +
-      `Вы собираетесь обнулить баланс системного кошелька.\\n` +
-      `Это действие *необратимо*. Все средства будут списаны.\\n` +
-      `Вы уверены?`;
+      `⚠️ *ВНИМАНИЕ* Вы собираетесь обнулить баланс системного кошелька. Это действие *необратимо*. Все средства будут списаны. Вы уверены?`;
 
     await ctx.reply(message, {
       parse_mode: 'Markdown',
