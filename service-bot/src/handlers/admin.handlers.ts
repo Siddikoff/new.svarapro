@@ -333,19 +333,23 @@ export class AdminHandlers {
       const formatPeriod = (periodName: string, periodStats: any) => {
         let result = `📅 **${periodName}**\n`;
 
+        if (!periodStats) {
+          return result + "Нет данных\n";
+        }
+
         if (filter === 'all') {
-          result += `💰 Вводы: ${periodStats.deposits.toFixed(2)} USDT\n`;
-          result += `💸 Выводы: ${periodStats.withdrawals.toFixed(2)} USDT\n`;
-          result += `  ├─ 🔷 Крипта: ${periodStats.crypto.deposits.toFixed(2)} / ${periodStats.crypto.withdrawals.toFixed(2)} USDT\n`;
-          result += `  └─ 💵 Фиат: ${periodStats.fiat.deposits.toFixed(2)} / ${periodStats.fiat.withdrawals.toFixed(2)} USDT\n`;
+          result += `💰 Вводы: ${(periodStats.deposits || 0).toFixed(2)} USDT\n`;
+          result += `💸 Выводы: ${(periodStats.withdrawals || 0).toFixed(2)} USDT\n`;
+          result += `  ├─ 🔷 Крипта: ${(periodStats.crypto?.deposits || 0).toFixed(2)} / ${(periodStats.crypto?.withdrawals || 0).toFixed(2)} USDT\n`;
+          result += `  └─ 💵 Фиат: ${(periodStats.fiat?.deposits || 0).toFixed(2)} / ${(periodStats.fiat?.withdrawals || 0).toFixed(2)} USDT\n`;
         } else if (filter === 'crypto') {
           result += `🔷 **Крипта**\n`;
-          result += `💰 Вводы: ${periodStats.crypto.deposits.toFixed(2)} USDT\n`;
-          result += `💸 Выводы: ${periodStats.crypto.withdrawals.toFixed(2)} USDT\n`;
+          result += `💰 Вводы: ${(periodStats.crypto?.deposits || 0).toFixed(2)} USDT\n`;
+          result += `💸 Выводы: ${(periodStats.crypto?.withdrawals || 0).toFixed(2)} USDT\n`;
         } else if (filter === 'fiat') {
           result += `💵 **Фиат**\n`;
-          result += `💰 Вводы: ${periodStats.fiat.deposits.toFixed(2)} USDT\n`;
-          result += `💸 Выводы: ${periodStats.fiat.withdrawals.toFixed(2)} USDT\n`;
+          result += `💰 Вводы: ${(periodStats.fiat?.deposits || 0).toFixed(2)} USDT\n`;
+          result += `💸 Выводы: ${(periodStats.fiat?.withdrawals || 0).toFixed(2)} USDT\n`;
         }
 
         return result;

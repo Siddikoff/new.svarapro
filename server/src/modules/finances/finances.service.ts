@@ -20,6 +20,55 @@ export class FinancesService {
   private readonly TON_TO_USDT_RATE = 3;
   private readonly supportedCurrencies = ['USDTTON', 'TON'];
 
+  private readonly withdrawalLimits = {
+    KGS: { min: 500, max: 150000 },
+    UZS: { min: 20000, max: 10000000 },
+    RUB: { min: 1000, max: 200000 },
+    TJS: { min: 25, max: 18000 },
+  };
+
+  // Fee configuration based on currency, type, and method
+  private readonly feeConfig = {
+    deposit: {
+      RUB: {
+        CLASSIC: 0.15,    // 15%
+        '1_5K': 0.16,     // 16%
+        ALFA: 0.12,       // 12%
+      },
+      UZS: 0.045,         // 4.5%
+      KGS: 0.065,         // 6.5%
+      TJS: 0.07,          // 7%
+    },
+    withdraw: {
+      RUB: 0.03,          // 3%
+      UZS: 0.01,          // 1%
+      KGS: 0.02,          // 2%
+      TJS: 0.03,          // 3%
+    },
+  };
+
+  /**
+   * Get fee percentage for a transaction
+   * @param type - 'deposit' or 'withdraw'
+   * @param currency - Currency code (RUB, UZS, KGS)
+   * @param method - Optional RUB payment method (CLASSIC, 1_5K, ALFA)
+   * @returns Fee as decimal (e.g., 0.15 for 15%)
+   */
+  private getFeePercentage(
+    type: 'deposit' | 'withdraw',
+    currency: string,
+    method?: RubPaymentMethod,
+  ): number {
+    if (type === 'deposit') {
+      if (currency === 'RUB' && method) {
+        return this.feeConfig.deposit.RUB[method] || this.feeConfig.deposit.RUB.CLASSIC;
+      }
+      return this.feeConfig.deposit[currency] || 0.10; // Default 10% if not configured
+    } else {
+      return this.feeConfig.withdraw[currency] || 0.10; // Default 10% if not configured
+    }
+  }
+
   constructor(
     @InjectRepository(Transaction)
     private transactionRepository: Repository<Transaction>,
@@ -227,6 +276,9 @@ export class FinancesService {
     bankName: string; // bankReceiver
     recipientName: string; // cardOwner
     manual: string; // manual instruction
+    // Exchange rate info
+    exchangeRate: number; // Current exchange rate
+    estimatedUSDT: number; // Estimated USDT amount user will receive
   }> {
     // Basic validation
     if (!amount || amount <= 0) {
@@ -256,23 +308,60 @@ export class FinancesService {
         method, // Pass RUB payment method
       );
 
+      // Accept payment terms (PATCH /transaction/{id}) - might be required to get full details
+      try {
+        await this.norosService.acceptPaymentTerms(payinResponse.id, currency, method, amount);
+        this.logger.log(`Accepted payment terms for transaction ${payinResponse.id}`);
+      } catch (error) {
+        this.logger.warn(`Could not accept payment terms: ${error instanceof Error ? error.message : String(error)}`);
+      }
+
+      // Immediately fetch full transaction details (Noros may not return all fields on creation)
+      const fullTransactionDetails = await this.norosService.getTransactionStatus(
+        payinResponse.id,
+        currency,
+        method,
+        amount, // Pass amount so NorosService can auto-select the correct RUB variant
+      );
+
+      this.logger.log(`Full transaction details: ${JSON.stringify(fullTransactionDetails)}`);
+
+      // Validate that we have the required payment details
+      if (!fullTransactionDetails.card || !fullTransactionDetails.cardOwner) {
+        this.logger.error(
+          `Transaction ${payinResponse.id} created but missing payment requisites. Status: ${fullTransactionDetails.status}`,
+        );
+
+        // Try to cancel the transaction in Noros since we can't proceed
+        try {
+          await this.norosService.cancelTransaction(payinResponse.id, currency, method, amount);
+          this.logger.log(`Cancelled incomplete transaction ${payinResponse.id}`);
+        } catch (cancelError) {
+          this.logger.warn(`Failed to cancel transaction ${payinResponse.id}: ${cancelError instanceof Error ? cancelError.message : String(cancelError)}`);
+        }
+
+        throw new BadRequestException(
+          'Выбранный банк временно недоступен. Пожалуйста, попробуйте другой банк или повторите попытку позже.',
+        );
+      }
+
       const transaction = this.transactionRepository.create({
         user: { id: user.id } as User,
         type: 'deposit',
         currency,
         amount: 0, // Will be updated on status check
-        address: payinResponse.card, // Noros returns receiver card in 'card' field
+        address: fullTransactionDetails.card || 'FIAT_DEPOSIT', // Noros returns receiver card in 'card' field, fallback for fiat
         tracker_id: payinResponse.id.toString(), // Store Noros transaction ID
         client_transaction_id: clientID,
         status: 'pending',
         payment_provider: 'noros', // Set provider to noros
-        token: payinResponse.bankReceiver, // Store bank name as token
+        token: fullTransactionDetails.bankReceiver, // Store bank name as token
         fiat_amount: amount,
         rate: null, // Noros does not provide a rate in this response
         extra: {
-          bankName: payinResponse.bankReceiver,
-          recipientName: payinResponse.cardOwner,
-          manual: payinResponse.manual,
+          bankName: fullTransactionDetails.bankReceiver,
+          recipientName: fullTransactionDetails.cardOwner,
+          manual: fullTransactionDetails.manual,
           rubMethod: method, // Store RUB payment method for future reference
         },
       });
@@ -285,12 +374,24 @@ export class FinancesService {
         `Noros fiat transaction initiated: norosId: ${payinResponse.id}, clientID: ${clientID}, currency: ${currency}, bankId: ${bankId}, amount: ${amount}`,
       );
 
+      // Get exchange rate and calculate estimated USDT (with fee)
+      const exchangeRate = await this.apiService.getCurrencyRate(currency);
+      const feePercentage = this.getFeePercentage('deposit', currency, method);
+      const estimatedUSDTBeforeFee = amount * exchangeRate;
+      const estimatedUSDT = estimatedUSDTBeforeFee * (1 - feePercentage); // Deduct fee
+
+      this.logger.log(
+        `Exchange rate for ${currency}: ${exchangeRate}, fee: ${(feePercentage * 100).toFixed(1)}%, estimated USDT before fee: ${estimatedUSDTBeforeFee.toFixed(2)}, after fee: ${estimatedUSDT.toFixed(2)}`,
+      );
+
       return {
         transaction: savedTransaction,
-        receiver: payinResponse.card,
-        bankName: payinResponse.bankReceiver,
-        recipientName: payinResponse.cardOwner,
-        manual: payinResponse.manual,
+        receiver: fullTransactionDetails.card,
+        bankName: fullTransactionDetails.bankReceiver,
+        recipientName: fullTransactionDetails.cardOwner,
+        manual: fullTransactionDetails.manual,
+        exchangeRate,
+        estimatedUSDT,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -324,24 +425,45 @@ export class FinancesService {
       throw new BadRequestException(`Invalid card/account number`);
     }
 
+    // Withdrawal limits validation
+    const limits = this.withdrawalLimits[currency];
+    if (limits) {
+      if (amount < limits.min || amount > limits.max) {
+        throw new BadRequestException(
+          `Сумма вывода для ${currency} должна быть между ${limits.min} и ${limits.max}.`,
+        );
+      }
+    }
+
     const user = await this.userRepository.findOne({ where: { telegramId } });
     if (!user) {
       this.logger.error(`User not found for telegramId: ${telegramId}`);
       throw new BadRequestException('User not found');
     }
 
-    // Check balance
-    if (user.balance < amount) {
+    // Convert fiat amount to USDT to debit from balance
+    const exchangeRate = await this.apiService.getCurrencyRate(currency);
+    const feePercentage = this.getFeePercentage('withdraw', currency, method);
+    const fiatAmount = amount; // User specified amount in fiat currency
+    const usdtEquivalent = fiatAmount * exchangeRate; // USDT equivalent of fiat
+    const usdtToDebit = usdtEquivalent / (1 - feePercentage); // USDT to debit including fee
+
+    this.logger.log(
+      `Withdraw calculation: ${fiatAmount} ${currency} * ${exchangeRate} = ${usdtEquivalent.toFixed(2)} USDT, with ${(feePercentage * 100).toFixed(1)}% fee: ${usdtToDebit.toFixed(2)} USDT to debit`,
+    );
+
+    // Check balance in USDT
+    if (user.balance < usdtToDebit) {
       this.logger.error(
-        `Insufficient balance for user ${telegramId}: balance=${user.balance}, amount=${amount}`,
+        `Insufficient balance for user ${telegramId}: balance=${user.balance} USDT, required=${usdtToDebit.toFixed(2)} USDT`,
       );
-      throw new BadRequestException('Insufficient balance');
+      throw new BadRequestException(`Недостаточно средств. Требуется: ${usdtToDebit.toFixed(2)} USDT, доступно: ${user.balance.toFixed(2)} USDT`);
     }
 
     const clientID = uuidv4();
 
-    // Debit balance immediately
-    user.balance -= amount;
+    // Debit USDT from balance immediately
+    user.balance -= usdtToDebit;
     await this.userRepository.save(user);
 
     try {
@@ -359,15 +481,15 @@ export class FinancesService {
         user: { id: user.id } as User,
         type: 'withdraw',
         currency,
-        amount, // Amount in USDT
-        address: number,
+        amount: usdtToDebit, // USDT debited from balance
+        address: number || 'FIAT_WITHDRAW', // Bank account/card number, fallback for fiat
         tracker_id: payoutResponse.id.toString(), // Store Noros payout ID
         client_transaction_id: clientID,
         status: 'pending', // Will be polled for updates
         payment_provider: 'noros',
         token: bankname,
-        fiat_amount: amount, // Assuming 1:1 for now, this may need adjustment
-        rate: null,
+        fiat_amount: fiatAmount, // Fiat amount user will receive
+        rate: exchangeRate, // Exchange rate used
         extra: {
           bankName: bankname,
           recipientName: owner,
@@ -389,7 +511,7 @@ export class FinancesService {
       };
     } catch (error) {
       // Refund balance on error
-      user.balance += amount;
+      user.balance += usdtToDebit;
       await this.userRepository.save(user);
 
       const message = error instanceof Error ? error.message : String(error);
@@ -662,13 +784,31 @@ export class FinancesService {
       // Extract RUB method from transaction extra if available
       const rubMethod = transaction.extra?.rubMethod as RubPaymentMethod | undefined;
 
-      const statusData = await this.norosService.getTransactionStatus(
-        norosTransId,
-        transaction.currency,
-        rubMethod,
-      );
+      // Use different endpoints for deposits and withdrawals
+      let statusData: any;
+      if (transaction.type === 'withdraw') {
+        // For withdrawals, use payout endpoint with api_secret_key
+        const payoutStatus = await this.norosService.getPayoutStatus(
+          norosTransId,
+          transaction.currency,
+          rubMethod,
+        );
+        // Map payout status to transaction status format
+        statusData = {
+          status: payoutStatus.status.toLowerCase(), // 'Success' -> 'success', 'Pending' -> 'pending'
+          amount: payoutStatus.amount,
+        };
+      } else {
+        // For deposits, use transaction endpoint with api_key
+        statusData = await this.norosService.getTransactionStatus(
+          norosTransId,
+          transaction.currency,
+          rubMethod,
+          transaction.fiat_amount || undefined,
+        );
+      }
 
-      if (statusData.status === 'success') {
+      if (statusData.status === 'success' || statusData.status === 'completed') {
         if (transaction.status === 'complete') {
           this.logger.warn(
             `Transaction ${clientID} already processed as complete, skipping duplicate processing`,
@@ -677,10 +817,15 @@ export class FinancesService {
         }
 
         transaction.status = 'complete';
-        // TODO: This is a critical assumption. We need to confirm which field from Noros response is the final USDT amount.
-        // Assuming statusData.amount is the credited amount in USDT for now.
-        const convertedAmount = statusData.amount;
+
+        // Convert fiat currency to USDT using exchange rate (with fee)
+        const currencyRate = await this.apiService.getCurrencyRate(transaction.currency);
+        const feePercentage = this.getFeePercentage(transaction.type, transaction.currency, rubMethod);
+        const convertedAmountBeforeFee = statusData.amount * currencyRate;
+        const convertedAmount = convertedAmountBeforeFee * (1 - feePercentage); // Deduct fee
+
         transaction.amount = convertedAmount;
+        transaction.rate = currencyRate;
 
         const user = await this.userRepository.findOne({
           where: { id: transaction.user.id },
@@ -689,7 +834,7 @@ export class FinancesService {
         if (user) {
           if (transaction.type === 'deposit') {
             this.logger.log(
-              `Fiat deposit confirmed: ${transaction.fiat_amount} ${transaction.currency} -> ${convertedAmount} USDT`,
+              `Fiat deposit conversion: ${statusData.amount} ${transaction.currency} * ${currencyRate} = ${convertedAmountBeforeFee.toFixed(2)} USDT, after ${(feePercentage * 100).toFixed(1)}% fee: ${convertedAmount.toFixed(2)} USDT`,
             );
 
             user.balance += convertedAmount;
@@ -699,7 +844,7 @@ export class FinancesService {
             try {
               const message =
                 `💰 *Баланс пополнен!*\n\n` +
-                `💵 *Сумма:* ${transaction.fiat_amount.toFixed(2)} ${transaction.currency}\n` +
+                `💵 *Сумма:* ${(transaction.fiat_amount ?? 0).toFixed(2)} ${transaction.currency}\n` +
                 `💲 *В USDT:* ${convertedAmount.toFixed(2)} USDT\n` +
                 `💳 *Новый баланс:* ${user.balance.toFixed(2)} USDT\n` +
                 `💳 *Способ оплаты:* ${transaction.token}\n` +
@@ -733,7 +878,7 @@ export class FinancesService {
                 { error: message },
               );
             }
-            
+
             // Referral logic remains the same
             if (user.referrer && convertedAmount >= 100) {
               const referrer = await this.userRepository.findOne({
@@ -768,12 +913,12 @@ export class FinancesService {
               }
             }
           } else if (transaction.type === 'withdraw') {
-             // This part of logic will be triggered by a separate cron for withdrawals
+            // This part of logic will be triggered by a separate cron for withdrawals
             this.logger.log(`Fiat withdrawal completed: ${transaction.amount} USDT`);
-             try {
+            try {
               const message =
                 `✅ *Вывод средств выполнен!*\n\n` +
-                `💵 *Сумма:* ${transaction.fiat_amount.toFixed(2)} ${transaction.currency}\n` +
+                `💵 *Сумма:* ${(transaction.fiat_amount ?? 0).toFixed(2)} ${transaction.currency}\n` +
                 `💲 *Списано USDT:* ${transaction.amount.toFixed(2)} USDT\n` +
                 `💳 *Способ вывода:* ${transaction.token}\n` +
                 `📅 *Дата:* ${new Date().toLocaleString('ru-RU')}\n\n` +
@@ -791,7 +936,7 @@ export class FinancesService {
             }
           }
         }
-      } else if (['error', 'cancelled'].includes(statusData.status)) {
+      } else if (['error', 'cancelled', 'canceled'].includes(statusData.status)) {
         if (transaction.status === 'failed') {
           this.logger.warn(
             `Transaction ${clientID} already processed as failed, skipping duplicate processing`,
@@ -814,7 +959,7 @@ export class FinancesService {
             );
           }
         }
-      } else if (['created', 'pending'].includes(statusData.status)) {
+      } else if (['created', 'pending', 'accepted'].includes(statusData.status)) {
         this.logger.log(
           `Transaction ${clientID} is still pending (status: ${statusData.status})`,
         );
@@ -842,6 +987,26 @@ export class FinancesService {
   async getTransactionHistory(telegramId: string): Promise<Transaction[]> {
     return this.transactionRepository.find({
       where: { user: { telegramId } },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async getFiatTransactionHistory(telegramId: string): Promise<Transaction[]> {
+    return this.transactionRepository.find({
+      where: {
+        user: { telegramId },
+        payment_provider: 'noros',
+      },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async getCryptoTransactionHistory(telegramId: string): Promise<Transaction[]> {
+    return this.transactionRepository.find({
+      where: {
+        user: { telegramId },
+        payment_provider: 'alfabit',
+      },
       order: { createdAt: 'DESC' },
     });
   }
@@ -895,5 +1060,37 @@ export class FinancesService {
   > {
     // DEBUG log removed
     return await this.apiService.getMerchantBalances();
+  }
+
+  async confirmFiatPayment(norosId: string): Promise<void> {
+    this.logger.log(`User confirmed fiat payment for norosId: ${norosId}`);
+
+    const transaction = await this.transactionRepository.findOne({
+      where: { tracker_id: norosId },
+    });
+
+    if (!transaction) {
+      this.logger.error(`Transaction with norosId (tracker_id) ${norosId} not found.`);
+      throw new BadRequestException('Transaction not found.');
+    }
+
+    if (!transaction.client_transaction_id) {
+      this.logger.error(`Transaction ${norosId} has no client_transaction_id`);
+      throw new BadRequestException('Invalid transaction state.');
+    }
+
+    // User has confirmed payment on their end.
+    // Immediately check the transaction status from Noros instead of waiting for the cron job.
+    this.logger.log(`User confirmed payment for transaction ${norosId}. Triggering immediate status check...`);
+
+    try {
+      await this.processNorosTransactionStatus(transaction.client_transaction_id);
+      this.logger.log(`Immediate status check completed for transaction ${norosId}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to check transaction status immediately: ${message}`);
+      // Don't throw - the cron job will handle it eventually
+      // But log the error so we know something went wrong
+    }
   }
 }

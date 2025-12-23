@@ -6,6 +6,7 @@ import {
   Param,
   BadRequestException,
   Query,
+  Patch,
 } from '@nestjs/common';
 import { FinancesService } from './finances.service';
 import { Logger } from '@nestjs/common';
@@ -16,7 +17,7 @@ import { RubPaymentMethod } from '../../services/noros.service';
 @Controller('finances')
 export class FinancesController {
   private readonly logger = new Logger(FinancesController.name);
-  constructor(private financesService: FinancesService) {}
+  constructor(private financesService: FinancesService) { }
 
   @Post('transaction')
   async createTransaction(
@@ -99,7 +100,7 @@ export class FinancesController {
     return { status: 'accepted' };
   }
 
-  @Get('history/:userId')
+  @Get('history/all/:userId')
   async getTransactionHistory(@Param('userId') userId: string) {
     const transactions =
       await this.financesService.getTransactionHistory(userId);
@@ -115,6 +116,47 @@ export class FinancesController {
             : t.status,
       tracker_id: t.tracker_id,
       createdAt: t.createdAt.toISOString(),
+      fiat_amount: t.fiat_amount,
+    }));
+  }
+
+  @Get('history/fiat/:userId')
+  async getFiatTransactionHistory(@Param('userId') userId: string) {
+    const transactions =
+      await this.financesService.getFiatTransactionHistory(userId);
+    return transactions.map((t) => ({
+      type: t.type,
+      currency: t.currency,
+      amount: t.amount,
+      status:
+        t.status === 'failed'
+          ? 'canceled'
+          : t.status === 'complete'
+            ? 'confirmed'
+            : t.status,
+      tracker_id: t.tracker_id,
+      createdAt: t.createdAt.toISOString(),
+      fiat_amount: t.fiat_amount,
+    }));
+  }
+
+  @Get('history/crypto/:userId')
+  async getCryptoTransactionHistory(@Param('userId') userId: string) {
+    const transactions =
+      await this.financesService.getCryptoTransactionHistory(userId);
+    return transactions.map((t) => ({
+      type: t.type,
+      currency: t.currency,
+      amount: t.amount,
+      status:
+        t.status === 'failed'
+          ? 'canceled'
+          : t.status === 'complete'
+            ? 'confirmed'
+            : t.status,
+      tracker_id: t.tracker_id,
+      createdAt: t.createdAt.toISOString(),
+      fiat_amount: t.fiat_amount,
     }));
   }
 
@@ -150,6 +192,10 @@ export class FinancesController {
       method?: RubPaymentMethod;
     },
   ) {
+    this.logger.log(
+      `[FIAT_TX] Request to create fiat transaction for telegramId: ${body.telegramId}, amount: ${body.amount}, currency: ${body.currency}, bankId: ${body.bankId}`,
+    );
+
     if (
       !body.telegramId ||
       typeof body.telegramId !== 'string' ||
@@ -205,6 +251,8 @@ export class FinancesController {
       bankName: result.bankName,
       recipientName: result.recipientName,
       manual: result.manual,
+      exchangeRate: result.exchangeRate,
+      estimatedUSDT: result.estimatedUSDT,
     };
   }
 
@@ -298,5 +346,12 @@ export class FinancesController {
       clientID: result.transaction.client_transaction_id,
       status: 'pending',
     };
+  }
+
+  @Patch('fiat/transaction/:norosId/proof')
+  async confirmFiatTransactionProof(@Param('norosId') norosId: string) {
+    this.logger.log(`Request to confirm fiat transaction proof for norosId: ${norosId}`);
+    await this.financesService.confirmFiatPayment(norosId);
+    return { status: 'ok' };
   }
 }

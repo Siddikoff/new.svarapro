@@ -173,10 +173,10 @@ export class AdminController {
     const totalStats = await this.getPeriodStats(new Date(0), now);
 
     return {
-      day: { deposits: dayStats.deposits, withdrawals: dayStats.withdrawals },
-      week: { deposits: weekStats.deposits, withdrawals: weekStats.withdrawals },
-      month: { deposits: monthStats.deposits, withdrawals: monthStats.withdrawals },
-      total: { deposits: totalStats.deposits, withdrawals: totalStats.withdrawals },
+      day: dayStats,
+      week: weekStats,
+      month: monthStats,
+      total: totalStats,
     };
   }
 
@@ -233,12 +233,12 @@ export class AdminController {
         .select('SUM(transaction.amount)', 'total')
         .getRawOne(),
 
-      // Фиат депозиты (nirvanapay)
+      // Фиат депозиты (noros)
       this.transactionRepository
         .createQueryBuilder('transaction')
         .where('transaction.type = :type', { type: 'deposit' })
         .andWhere('transaction.status = :status', { status: 'complete' })
-        .andWhere('transaction.payment_provider = :provider', { provider: 'nirvanapay' })
+        .andWhere('transaction.payment_provider = :provider', { provider: 'noros' })
         .andWhere('transaction.createdAt BETWEEN :start AND :end', {
           start: startDate,
           end: endDate,
@@ -246,12 +246,12 @@ export class AdminController {
         .select('SUM(transaction.amount)', 'total')
         .getRawOne(),
 
-      // Фиат выводы (nirvanapay)
+      // Фиат выводы (noros)
       this.transactionRepository
         .createQueryBuilder('transaction')
         .where('transaction.type = :type', { type: 'withdraw' })
         .andWhere('transaction.status = :status', { status: 'complete' })
-        .andWhere('transaction.payment_provider = :provider', { provider: 'nirvanapay' })
+        .andWhere('transaction.payment_provider = :provider', { provider: 'noros' })
         .andWhere('transaction.createdAt BETWEEN :start AND :end', {
           start: startDate,
           end: endDate,

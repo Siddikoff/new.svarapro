@@ -81,7 +81,7 @@ export const apiService = {
   > {
     const token = localStorage.getItem('token');
     if (!token) throw new Error('No token available');
-    const response = await api.get(`/finances/history/${userId}`, {
+    const response = await api.get(`/finances/history/all/${userId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;

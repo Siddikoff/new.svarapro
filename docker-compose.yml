@@ -1,29 +1,27 @@
 version: '3.8'
 
 services:
-  nginx:
-    build:
-      context: .
-      dockerfile: nginx/Dockerfile
-      args:
-        - VITE_APP_URL=${VITE_APP_URL}
-        - VITE_WS_URL=${VITE_WS_URL}
-        - VITE_API_URL=${VITE_API_URL}
-        - NODE_IMAGE=${NODE_IMAGE}
-        - NGINX_IMAGE=${NGINX_IMAGE}
-      cache_from:
-        - ${NGINX_IMAGE}
-        - ${NODE_IMAGE}
-    ports:
-      - "80:80"
-      - "443:443"
-    depends_on:
-      - app
-    volumes:
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    networks:
-      - app-network
-    restart: unless-stopped
+#  nginx:
+#    build:
+#      context: .
+#      dockerfile: nginx/Dockerfile
+#      args:
+#        - VITE_APP_URL=${VITE_APP_URL}
+#        - VITE_WS_URL=${VITE_WS_URL}
+#        - VITE_API_URL=${VITE_API_URL}
+#        - NODE_IMAGE=${NODE_IMAGE}
+#        - NGINX_IMAGE=${NGINX_IMAGE}
+#
+#    ports:
+#      - "80:80"
+#      - "443:443"
+#    depends_on:
+#      - app
+#    volumes:
+#      - /etc/letsencrypt:/etc/letsencrypt:ro
+#    networks:
+#      - app-network
+#    restart: unless-stopped
 
   app:
     build:
@@ -31,8 +29,7 @@ services:
       dockerfile: Dockerfile
       args:
         - NODE_IMAGE=${NODE_IMAGE}
-      cache_from:
-        - ${NODE_IMAGE}
+
     env_file:
       - ./server/.env
     environment:
@@ -45,6 +42,11 @@ services:
       - ADMIN_IDS=${ADMIN_IDS}
       - API_BASE_URL=${API_BASE_URL}
       - API_SECRET=${API_SECRET}
+      - NIRVANAPAY_API_PUBLIC_TJK=${NIRVANAPAY_API_PUBLIC_TJK}
+      - NIRVANAPAY_API_PRIVATE_TJK=${NIRVANAPAY_API_PRIVATE_TJK}
+      # Map NIRVANAPAY vars to NOROS expected vars
+      - NOROS_API_KEY_TJS=${NIRVANAPAY_API_PUBLIC_TJK}
+      - NOROS_API_SECRET_KEY_TJS=${NIRVANAPAY_API_PRIVATE_TJK}
     ports:
       - "3000:3000"
     depends_on:

@@ -14,6 +14,8 @@ export interface NorosFiatTransactionResponse {
   bankName: string;
   recipientName: string;
   manual: string;
+  exchangeRate: number;
+  estimatedUSDT: number;
 }
 
 export interface UserProfile {
@@ -211,6 +213,21 @@ export class ApiService {
         `/finances/history/fiat/${telegramId}`,
       );
       return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message =
+          error.response?.data?.message || error.message || "Unknown error";
+        throw new Error(`API error: ${message}`);
+      }
+      throw error;
+    }
+  }
+
+  async confirmFiatTransaction(norosId: string): Promise<void> {
+    try {
+      await this.api.patch(
+        `/finances/fiat/transaction/${norosId}/proof`,
+      );
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const message =

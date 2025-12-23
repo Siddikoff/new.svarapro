@@ -59,19 +59,30 @@ bot.start(async (ctx) => {
   const user = ctx.from;
   if (!user) return;
 
-  // Создаём пользователя если его нет
+  // Создаём пользователя если его нет и получаем баланс
+  const apiService = new (await import("./services/api.service.js")).ApiService();
+  let balance = 0;
+
   try {
-    const apiService = new (await import("./services/api.service.js")).ApiService();
+    console.log(`[START] Creating/ensuring user for telegramId: ${user.id}`);
     await apiService.ensureUser(user.id.toString(), {
       username: user.username,
       firstName: user.first_name,
       lastName: user.last_name,
     });
+    console.log(`[START] User ensured successfully for telegramId: ${user.id}`);
+
+    // Get user balance
+    const profile = await apiService.getUserProfile(user.id.toString());
+    balance = profile.balance;
+    console.log(`[START] User balance fetched: ${balance} for telegramId: ${user.id}`);
   } catch (error) {
-    console.error("Failed to ensure user:", error);
+    console.error(`[START] Failed to ensure user or get balance for telegramId ${user.id}:`, error);
   }
 
   const welcomeMessage = `👋 Привет!
+
+💰 *Ваш баланс: ${balance.toFixed(2)} USDT*
 
 Здесь вы можете:
 ▪️ Пополнить баланс
@@ -85,13 +96,9 @@ bot.start(async (ctx) => {
   await ctx.reply(welcomeMessage, {
     parse_mode: "Markdown",
     ...Markup.inlineKeyboard([
-      [
-        Markup.button.callback("💰 Пополнить баланс", "start_deposit"),
-        Markup.button.callback("💸 Вывести средства", "start_withdraw"),
-      ],
-      [
-        Markup.button.callback("📜 История фиатных переводов", "start_fiat_history"),
-      ],
+      [Markup.button.callback("💰 Пополнить баланс", "start_deposit")],
+      [Markup.button.callback("💸 Вывести средства", "start_withdraw")],
+      [Markup.button.callback("📜 История фиатных переводов", "start_fiat_history")],
     ]),
   });
 });
@@ -129,12 +136,14 @@ bot.action("start_fiat_history", async (ctx) => {
 
 // Пользовательские callback'ы - Пополнение
 bot.action(/deposit_currency_.+/, (ctx) => userHandlers.handleCurrencySelection(ctx));
+bot.action(/deposit_rub_amount_.+/, (ctx) => userHandlers.handleRubAmountSelection(ctx));
+bot.action("deposit_rub_custom_amount", (ctx) => userHandlers.handleRubCustomAmount(ctx));
 bot.action(/deposit_bank_.+/, (ctx) => userHandlers.handleBankSelection(ctx));
 bot.action(/deposit_amount_.+/, (ctx) => userHandlers.handleAmountSelection(ctx));
 bot.action("deposit_custom_amount", (ctx) => userHandlers.handleCustomAmount(ctx));
 bot.action(/deposit_back_.+/, (ctx) => userHandlers.handleBackButton(ctx));
-bot.action("deposit_done", (ctx) => userHandlers.handleDoneButton(ctx));
-// bot.action("cancel_operation", (ctx) => userHandlers.handleCancelCommand(ctx));
+bot.action(/deposit_done_.+/, (ctx) => userHandlers.handleDoneButton(ctx));
+bot.action("cancel_operation", (ctx) => userHandlers.handleCancelCommand(ctx));
 
 // Пользовательские callback'ы - Вывод
 bot.action(/withdraw_currency_.+/, (ctx) => userHandlers.handleWithdrawCurrencySelection(ctx));

@@ -32,7 +32,7 @@ interface NorosTransactionResponse {
   id: number;
   amount: number;
   currency: string;
-  status: 'created' | 'pending' | 'success' | 'error' | 'cancelled'; // Assuming statuses
+  status: 'created' | 'pending' | 'success' | 'completed' | 'error' | 'cancelled' | 'canceled'; // Noros statuses
   card: string;
   cardOwner: string;
   bankReceiver: string;
@@ -72,10 +72,11 @@ export class NorosService {
   private readonly logger = new Logger(NorosService.name);
 
   constructor() {
-    this.baseUrl = process.env.NOROS_BASE_URL;
-    if (!this.baseUrl) {
+    const baseUrl = process.env.NOROS_BASE_URL;
+    if (!baseUrl) {
       throw new Error('NOROS_BASE_URL is not defined in environment variables.');
     }
+    this.baseUrl = baseUrl;
 
     // Load RUB credentials with subtypes
     const rubSubtypes = ['CLASSIC', '1_5K', 'ALFA'];
@@ -92,7 +93,7 @@ export class NorosService {
     }
 
     // Load other currencies
-    const currencies = ['UZS', 'KZT', 'KGS'];
+    const currencies = ['UZS', 'TJS', 'KGS'];
     for (const currency of currencies) {
       const apiKey = process.env[`NOROS_API_KEY_${currency}`];
       const apiSecretKey = process.env[`NOROS_API_SECRET_KEY_${currency}`];
@@ -169,7 +170,7 @@ export class NorosService {
       [keyType]: key,
     };
   }
-  
+
   // TODO: Implement formatErrorMessage method if needed
 
   async getBanks(currency: string, amount?: number, method?: RubPaymentMethod): Promise<NorosBank[]> {
@@ -189,7 +190,7 @@ export class NorosService {
         } else {
           // Default to CLASSIC if no amount or method specified
           currencyKey = this.credentials.has('RUB_CLASSIC') ? 'RUB_CLASSIC' :
-                        this.credentials.has('RUB_1_5K') ? 'RUB_1_5K' : 'RUB_ALFA';
+            this.credentials.has('RUB_1_5K') ? 'RUB_1_5K' : 'RUB_ALFA';
         }
         this.logger.log(`Selected RUB variant: ${currencyKey}`);
       }
@@ -240,21 +241,119 @@ export class NorosService {
         headers: this.getHeaders(currencyKey, 'api_key'),
       });
       this.logger.log(`Successfully created pay-in with Noros. Transaction ID: ${response.data.id}`);
+      this.logger.log(`Noros response data: ${JSON.stringify(response.data)}`);
       return response.data;
     } catch (error) {
-      this.logger.error(`Error creating Noros pay-in: ${error.message}`);
-      throw new BadRequestException('Payment provider error on creating transaction.');
+      const errorMessage = error.response?.data?.message || error.message;
+      this.logger.error(
+        `Error creating Noros pay-in: ${errorMessage}`,
+        error.stack,
+      );
+      this.logger.error(`Noros error response: ${JSON.stringify(error.response?.data)}`);
+      throw new BadRequestException(
+        `Payment provider error on creating transaction: ${errorMessage}`,
+      );
     }
   }
 
-  async getTransactionStatus(transId: number, currency: string, method?: RubPaymentMethod): Promise<NorosTransactionResponse> {
-    this.logger.log(`Getting status for transaction ${transId}, currency: ${currency}`);
+  async acceptPaymentTerms(transId: number, currency: string, method?: RubPaymentMethod, amount?: number): Promise<void> {
+    this.logger.log(`Accepting payment terms for transaction ${transId}, currency: ${currency}`);
 
     let currencyKey = currency;
 
-    // For RUB with method specified, use the specific variant
-    if (currency === 'RUB' && method) {
-      currencyKey = `RUB_${method}`;
+    // For RUB, select appropriate variant
+    if (currency === 'RUB') {
+      if (method) {
+        currencyKey = `RUB_${method}`;
+      } else if (amount !== undefined) {
+        currencyKey = this.selectRubVariant(amount, method);
+      } else {
+        const availableVariants = ['RUB_CLASSIC', 'RUB_1_5K', 'RUB_ALFA'];
+        for (const variant of availableVariants) {
+          if (this.credentials.has(variant)) {
+            currencyKey = variant;
+            break;
+          }
+        }
+      }
+      this.logger.log(`Using RUB variant: ${currencyKey} for accepting terms`);
+    }
+
+    try {
+      await axios.patch(`${this.baseUrl}/transaction/${transId}`, {}, {
+        headers: this.getHeaders(currencyKey, 'api_key'),
+      });
+      this.logger.log(`Successfully accepted payment terms for transaction ${transId}`);
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message;
+      this.logger.error(`Error accepting payment terms: ${errorMessage}`, error.stack);
+
+      if (errorMessage.includes('No free requisites')) {
+        throw new BadRequestException('Payment provider has no available capacity for this bank. Please try another bank or try again later.');
+      }
+
+      throw new BadRequestException('Payment provider error on accepting payment terms.');
+    }
+  }
+
+  async cancelTransaction(transId: number, currency: string, method?: RubPaymentMethod, amount?: number): Promise<void> {
+    this.logger.log(`Cancelling transaction ${transId}, currency: ${currency}`);
+
+    let currencyKey = currency;
+
+    // For RUB, select appropriate variant
+    if (currency === 'RUB') {
+      if (method) {
+        currencyKey = `RUB_${method}`;
+      } else if (amount !== undefined) {
+        currencyKey = this.selectRubVariant(amount, method);
+      } else {
+        const availableVariants = ['RUB_CLASSIC', 'RUB_1_5K', 'RUB_ALFA'];
+        for (const variant of availableVariants) {
+          if (this.credentials.has(variant)) {
+            currencyKey = variant;
+            break;
+          }
+        }
+      }
+      this.logger.log(`Using RUB variant: ${currencyKey} for cancelling transaction`);
+    }
+
+    try {
+      await axios.delete(`${this.baseUrl}/transaction/${transId}`, {
+        headers: this.getHeaders(currencyKey, 'api_key'),
+      });
+      this.logger.log(`Successfully cancelled transaction ${transId}`);
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message;
+      this.logger.error(`Error cancelling transaction: ${errorMessage}`, error.stack);
+      throw new BadRequestException('Payment provider error on cancelling transaction.');
+    }
+  }
+
+  async getTransactionStatus(transId: number, currency: string, method?: RubPaymentMethod, amount?: number): Promise<NorosTransactionResponse> {
+    this.logger.log(`Getting status for transaction ${transId}, currency: ${currency}, method: ${method}, amount: ${amount}`);
+
+    let currencyKey = currency;
+
+    // For RUB, select appropriate variant
+    if (currency === 'RUB') {
+      if (method) {
+        currencyKey = `RUB_${method}`;
+      } else if (amount !== undefined) {
+        // Auto-select based on amount
+        currencyKey = this.selectRubVariant(amount, method);
+      } else {
+        // Fallback: try to find any available RUB variant
+        const availableVariants = ['RUB_CLASSIC', 'RUB_1_5K', 'RUB_ALFA'];
+        for (const variant of availableVariants) {
+          if (this.credentials.has(variant)) {
+            currencyKey = variant;
+            this.logger.warn(`No method/amount provided, using fallback variant ${currencyKey}`);
+            break;
+          }
+        }
+      }
       this.logger.log(`Using RUB variant: ${currencyKey}`);
     }
     // Note: currency may already be RUB_CLASSIC, RUB_1_5K, etc. from the database
@@ -308,7 +407,40 @@ export class NorosService {
       throw new BadRequestException('Payment provider error on creating payout.');
     }
   }
-  
+
+  async getPayoutStatus(payoutId: number, currency: string, method?: RubPaymentMethod): Promise<NorosPayoutResponse> {
+    this.logger.log(`Getting status for payout ${payoutId}, currency: ${currency}`);
+
+    let currencyKey = currency;
+
+    // For RUB, select appropriate variant
+    if (currency === 'RUB') {
+      if (method) {
+        currencyKey = `RUB_${method}`;
+      } else {
+        const availableVariants = ['RUB_CLASSIC', 'RUB_1_5K', 'RUB_ALFA'];
+        for (const variant of availableVariants) {
+          if (this.credentials.has(variant)) {
+            currencyKey = variant;
+            break;
+          }
+        }
+      }
+      this.logger.log(`Using RUB variant: ${currencyKey} for payout status check`);
+    }
+
+    try {
+      const response = await axios.get<NorosPayoutResponse>(`${this.baseUrl}/payout/${payoutId}`, {
+        headers: this.getHeaders(currencyKey, 'api_secret_key'),
+      });
+      this.logger.log(`Successfully retrieved payout status. Status: ${response.data.status}`);
+      return response.data;
+    } catch (error) {
+      this.logger.error(`Error getting payout status: ${error.message}`);
+      throw new BadRequestException('Payment provider error on getting payout status.');
+    }
+  }
+
   async getBalance(currency: string, method?: RubPaymentMethod): Promise<NorosBalance> {
     this.logger.log(`Getting balance for ${currency}`);
 
@@ -321,7 +453,7 @@ export class NorosService {
       } else {
         // Default to CLASSIC if no method specified
         currencyKey = this.credentials.has('RUB_CLASSIC') ? 'RUB_CLASSIC' :
-                      this.credentials.has('RUB_1_5K') ? 'RUB_1_5K' : 'RUB_ALFA';
+          this.credentials.has('RUB_1_5K') ? 'RUB_1_5K' : 'RUB_ALFA';
       }
       this.logger.log(`Getting balance for RUB variant: ${currencyKey}`);
     }
@@ -356,5 +488,59 @@ export class NorosService {
     }
 
     return results;
+  }
+
+  async confirmPayment(transId: number, currency: string, method?: RubPaymentMethod, amount?: number): Promise<NorosTransactionResponse> {
+    this.logger.log(`Confirming payment (proof) for transaction ${transId}`);
+
+    let currencyKey = currency;
+    if (currency === 'RUB') {
+      if (method) {
+        currencyKey = `RUB_${method}`;
+      } else if (amount !== undefined) {
+        currencyKey = this.selectRubVariant(amount, method);
+      } else {
+        const availableVariants = ['RUB_CLASSIC', 'RUB_1_5K', 'RUB_ALFA'];
+        for (const variant of availableVariants) {
+          if (this.credentials.has(variant)) {
+            currencyKey = variant;
+            break;
+          }
+        }
+      }
+      this.logger.log(`Using RUB variant: ${currencyKey} for confirming payment`);
+    }
+
+    try {
+      // Use FormData for multipart/form-data request
+      const FormData = require('form-data');
+      const formData = new FormData();
+      // Field 'doc' is optional according to API docs, so we send empty FormData
+
+      // Get credentials manually instead of using getHeaders (which sets Content-Type: application/json)
+      const creds = this.credentials.get(currencyKey);
+      const apiKey = creds?.apiKey;
+
+      if (!apiKey) {
+        throw new BadRequestException(`No suitable API key found for ${currencyKey} and operation type api_key.`);
+      }
+
+      const response = await axios.patch<NorosTransactionResponse>(
+        `${this.baseUrl}/transaction/${transId}/proof`,
+        formData,
+        {
+          headers: {
+            ...formData.getHeaders(), // Sets Content-Type: multipart/form-data with boundary
+            'api_key': apiKey,
+          },
+        }
+      );
+      this.logger.log(`Successfully confirmed payment for transaction ${transId}. New status: ${response.data.status}`);
+      return response.data;
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message;
+      this.logger.error(`Error confirming payment: ${errorMessage}`, error.stack);
+      throw new BadRequestException(`Payment provider error on confirming payment.`);
+    }
   }
 }

@@ -55,8 +55,9 @@ export class Transaction {
   @Column({
     type: 'varchar',
     length: 128,
+    nullable: true,
   })
-  address: string;
+  address: string | null;
 
   @Column({
     type: 'varchar',
