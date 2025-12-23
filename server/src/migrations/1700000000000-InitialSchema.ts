@@ -16,7 +16,7 @@ export class InitialSchema1700000000000 implements MigrationInterface {
         "firstName" character varying(64),
         "lastName" character varying(64),
         "avatar" character varying(512),
-        "balance" decimal(12,2) NOT NULL DEFAULT 100,
+        "balance" decimal(12,2) NOT NULL DEFAULT 0,
         "walletAddress" character varying(255),
         "totalDeposit" decimal(12,2) NOT NULL DEFAULT 0,
         "refBalance" decimal(12,2) NOT NULL DEFAULT 0,

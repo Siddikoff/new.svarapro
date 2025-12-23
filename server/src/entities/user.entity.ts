@@ -53,7 +53,7 @@ export class User {
     type: 'decimal',
     precision: 12,
     scale: 2,
-    default: 100,
+    default: 0,
     transformer: {
       to: (value: number) => value,
       from: (value: string) => parseFloat(value),
