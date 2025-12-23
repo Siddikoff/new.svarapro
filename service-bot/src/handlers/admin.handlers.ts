@@ -877,12 +877,8 @@ export class AdminHandlers {
         );
       }
 
-      await ctx.reply(
-        '✅ *Ваш личный баланс администратора успешно обнулен.*',
-        { parse_mode: 'Markdown' }
-      );
-      // Show updated wallet view
-      await this.showSystemWallet(ctx);
+      // Show updated user info
+      await this.showUserInfo(ctx, telegramId);
     } catch (error) {
       console.error('Error resetting admin balance:', error);
       await ctx.reply(
