@@ -1,5 +1,5 @@
 import axios from "axios";
-import { AdminSession, AdminLoginState } from "../types/index.js";
+import { AdminSession, AdminLoginState, AdminWithdrawSession } from "../types/index.js";
 
 export class AdminService {
   private sessions = new Map<string, AdminSession>();
@@ -146,5 +146,20 @@ export class AdminService {
 
   clearSearchState(telegramId: string): void {
     this.searchStates.delete(telegramId);
+  }
+
+  // Управление сессиями вывода средств
+  private withdrawSessions = new Map<string, AdminWithdrawSession>();
+
+  getWithdrawSession(telegramId: string): AdminWithdrawSession | undefined {
+    return this.withdrawSessions.get(telegramId);
+  }
+
+  setWithdrawSession(telegramId: string, session: AdminWithdrawSession): void {
+    this.withdrawSessions.set(telegramId, session);
+  }
+
+  clearWithdrawSession(telegramId: string): void {
+    this.withdrawSessions.delete(telegramId);
   }
 }

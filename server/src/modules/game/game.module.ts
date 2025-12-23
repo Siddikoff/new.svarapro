@@ -8,22 +8,24 @@ import { GameGateway } from './game.gateway';
 import { RedisService } from '../../services/redis.service';
 import { UsersModule } from '../users/users.module';
 
+import { FinancesModule } from '../finances/finances.module';
+
 @Module({
-  imports: [UsersModule],
+  imports: [UsersModule, FinancesModule],
   providers: [
     //  Основной сервис (монолитная архитектура)
     GameService,
-    
+
     // Вспомогательные сервисы
     CardService,
     PlayerService,
     BettingService,
     GameStateService,
-    
+
     // Инфраструктурные сервисы
     GameGateway,
     RedisService,
   ],
   exports: [GameService, GameStateService],
 })
-export class GameModule {}
+export class GameModule { }

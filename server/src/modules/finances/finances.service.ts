@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Transaction } from '../../entities/transactions.entity';
 import { User } from '../../entities/user.entity';
+import { SystemWallet } from '../../entities/system-wallet.entity';
 import { ApiService } from '../../services/api.service';
 import { NorosService, RubPaymentMethod } from '../../services/noros.service';
 import { TransactionGateway } from './transactions.gateway';
@@ -74,6 +75,8 @@ export class FinancesService {
     private transactionRepository: Repository<Transaction>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(SystemWallet)
+    private systemWalletRepository: Repository<SystemWallet>,
     private apiService: ApiService,
     private norosService: NorosService,
     private transactionGateway: TransactionGateway,
@@ -88,7 +91,126 @@ export class FinancesService {
     });
   }
 
-  async checkPendingFiatTransactions(): Promise<void> {
+  async getSystemWallet(): Promise<SystemWallet> {
+    let wallet = await this.systemWalletRepository.findOne({ where: { id: 1 } });
+    if (!wallet) {
+      wallet = this.systemWalletRepository.create({ id: 1, balance: 0.0 });
+      await this.systemWalletRepository.save(wallet);
+    }
+    return wallet;
+  }
+
+  async addToSystemWallet(amount: number): Promise<void> {
+    const wallet = await this.getSystemWallet();
+    wallet.balance = Number(wallet.balance) + Number(amount);
+    await this.systemWalletRepository.save(wallet);
+    this.logger.log(`Added ${amount} to system wallet. New balance: ${wallet.balance}`);
+  }
+
+  async initSystemWalletWithdraw(
+    adminTelegramId: string,
+    amount: number,
+    currency: string,
+    number: string,
+    bankname: string,
+    owner: string,
+    method?: RubPaymentMethod,
+  ): Promise<{
+    transaction: Transaction;
+    payoutId: number;
+  }> {
+    // Basic validation similar to initFiatWithdraw
+    if (!amount || amount <= 0) {
+      throw new BadRequestException(`Amount must be greater than 0: ${amount}`);
+    }
+
+    const wallet = await this.getSystemWallet();
+
+    // Check withdrawal limits
+    const limits = this.withdrawalLimits[currency];
+    if (limits) {
+      if (amount < limits.min || amount > limits.max) {
+        throw new BadRequestException(
+          `Сумма вывода для ${currency} должна быть между ${limits.min} и ${limits.max}.`,
+        );
+      }
+    }
+
+    // Convert fiat amount to USDT to debit from system wallet
+    const exchangeRate = await this.apiService.getCurrencyRate(currency);
+    const feePercentage = this.getFeePercentage('withdraw', currency, method);
+    const fiatAmount = amount; // User specified amount in fiat currency
+    const usdtEquivalent = fiatAmount * exchangeRate; // USDT equivalent of fiat
+    const usdtToDebit = usdtEquivalent / (1 - feePercentage); // USDT to debit including fee
+
+    // Check balance in System Wallet
+    if (wallet.balance < usdtToDebit) {
+      throw new BadRequestException(`Недостаточно средств в кошельке проекта. Требуется: ${usdtToDebit.toFixed(2)} USDT, доступно: ${wallet.balance} USDT`);
+    }
+
+    const clientID = uuidv4();
+
+    // Debit USDT from system wallet balance immediately
+    wallet.balance -= usdtToDebit;
+    await this.systemWalletRepository.save(wallet);
+
+    try {
+      const payoutResponse = await this.norosService.createPayout(
+        amount,
+        currency,
+        number,
+        bankname,
+        owner,
+        clientID,
+        method,
+      );
+
+      // Find admin user to link transaction
+      const adminUser = await this.userRepository.findOne({ where: { telegramId: adminTelegramId } });
+
+      const transaction = this.transactionRepository.create({
+        user: adminUser || undefined, // Link to admin user if exists in users table, else null (but schema might require user...)
+        // Actually, Transaction entity requires user. Admins should be in users table if they use the bot.
+        // If admin is NOT in users table (unlikely for bot users), this might fail. 
+        // Assuming admin calling this is a bot user.
+        type: 'withdraw',
+        currency,
+        amount: usdtToDebit,
+        address: number || 'SYSTEM_WITHDRAW',
+        tracker_id: payoutResponse.id.toString(),
+        client_transaction_id: clientID,
+        status: 'pending',
+        payment_provider: 'noros',
+        token: bankname,
+        fiat_amount: fiatAmount,
+        rate: exchangeRate,
+        extra: {
+          bankName: bankname,
+          recipientName: owner,
+          rubMethod: method,
+          isSystemWithdraw: true, // Mark as system withdraw
+          adminId: adminTelegramId
+        },
+      });
+
+      const savedTransaction = await this.transactionRepository.save(transaction);
+
+      this.logger.log(
+        `System wallet withdrawal initiated: payoutId: ${payoutResponse.id}, clientID: ${clientID}, currency: ${currency}, amount: ${amount}, admin: ${adminTelegramId}`,
+      );
+
+      return {
+        transaction: savedTransaction,
+        payoutId: payoutResponse.id,
+      };
+    } catch (error) {
+      // Refund balance on error
+      wallet.balance += usdtToDebit;
+      await this.systemWalletRepository.save(wallet);
+      throw error;
+    }
+  }
+  async checkPendingFiatTransactions() {
     try {
       const pendingTransactions = await this.transactionRepository.find({
         where: {

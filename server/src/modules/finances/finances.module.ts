@@ -11,9 +11,11 @@ import { ApiService } from '../../services/api.service';
 import { NorosService } from '../../services/noros.service';
 import { TelegramService } from '../../services/telegram.service';
 
+import { SystemWallet } from '../../entities/system-wallet.entity';
+
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Transaction, User]),
+    TypeOrmModule.forFeature([Transaction, User, SystemWallet]),
     BullModule.registerQueue({
       name: 'callback-queue',
     }),
@@ -26,6 +28,7 @@ import { TelegramService } from '../../services/telegram.service';
     TransactionGateway,
     CallbackProcessor,
     TelegramService,
-  ], // Добавляем CallbackProcessor
+  ],
+  exports: [FinancesService],
 })
-export class FinancesModule {}
+export class FinancesModule { }

@@ -7,10 +7,16 @@ interface ExistsResult {
 
 @Injectable()
 export class MigrationService implements OnModuleInit {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(private readonly dataSource: DataSource) { }
 
   async onModuleInit() {
     try {
+      const options = this.dataSource.options as any;
+      if (options.synchronize) {
+        console.log('🔄 Database synchronization is enabled. Skipping migrations.');
+        return;
+      }
+
       console.log('🔄 Starting database migrations...');
 
       // Проверяем, есть ли таблица migrations

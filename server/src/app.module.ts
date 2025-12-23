@@ -48,9 +48,9 @@ import * as Joi from 'joi';
           database: config.get<string>('POSTGRES_DB'),
           entities: [__dirname + '/**/*.entity{.ts,.js}'],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
-          synchronize: false, // Отключаем для продакшена, используем миграции
+          synchronize: true, // Включено для обновления схемы БД
           logging: process.env.NODE_ENV === 'development',
-          autoCreateDatabase: false, // Отключаем для продакшена
+          autoCreateDatabase: true, // Включено для обновления схемы БД
         };
       },
       inject: [ConfigService],
@@ -95,4 +95,4 @@ import * as Joi from 'joi';
     MigrationService,
   ],
 })
-export class AppModule {}
+export class AppModule { }

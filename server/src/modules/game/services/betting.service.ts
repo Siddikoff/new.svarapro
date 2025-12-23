@@ -1,8 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { GameState, Player, GameAction } from '../../../types/game';
+import { FinancesService } from '../../finances/finances.service';
 
 @Injectable()
 export class BettingService {
+  constructor(private financesService: FinancesService) { }
+
   // Обработка анте (входной ставки)
   processAnte(
     gameState: GameState,
@@ -70,12 +73,12 @@ export class BettingService {
     if (gameState.status === 'betting' && gameState.lastRaiseIndex !== undefined) {
       return gameState.lastRaiseIndex;
     }
-    
+
     // В blind_betting фазе якорем является последний blind bettor
     if (gameState.status === 'blind_betting' && gameState.lastBlindBettorIndex !== undefined) {
       return gameState.lastBlindBettorIndex;
     }
-    
+
     // Fallback к дилеру
     return gameState.dealerIndex;
   }
@@ -92,12 +95,12 @@ export class BettingService {
 
     // Определяем якорь используя централизованную функцию
     const anchorIndex = this.getAnchorPlayerIndex(gameState);
-    
+
     // Круг окончен, если ход вернулся к якорю
     if (gameState.currentPlayerIndex === anchorIndex) {
       const playersWithMoney = activePlayers.filter(p => p.balance > 0);
       if (playersWithMoney.length === 0) return true;
-      
+
       const firstBet = playersWithMoney[0].totalBet;
       return playersWithMoney.every(p => p.totalBet === firstBet);
     }
@@ -119,6 +122,13 @@ export class BettingService {
     // Вычисляем комиссию (5% от банка)
     const rake = Number((updatedGameState.pot * 0.05).toFixed(2));
     const winAmount = Number((updatedGameState.pot - rake).toFixed(2));
+
+    // Если rake > 0, добавляем его в системный кошелек
+    if (rake > 0) {
+      this.financesService.addToSystemWallet(rake).catch(err => {
+        console.error('Failed to add rake to system wallet', err);
+      });
+    }
 
     // Если есть несколько победителей, делим выигрыш поровну
     const winPerPlayer = Number((winAmount / winnerIds.length).toFixed(2));
@@ -178,23 +188,23 @@ export class BettingService {
     switch (action) {
       case 'blind_bet':
         return { canPerform: !player.hasLooked, error: 'Вы уже посмотрели карты' };
-      
+
       case 'look':
         return { canPerform: !player.hasLooked, error: 'Вы уже посмотрели карты' };
-      
+
       case 'call':
         if (gameState.status === 'betting') return { canPerform: true };
         if (gameState.status === 'blind_betting' && player.hasLookedAndMustAct) return { canPerform: true };
         return { canPerform: false, error: 'Сейчас нельзя уравнивать' };
-      
+
       case 'raise':
         if (gameState.status === 'betting') return { canPerform: true };
         if (gameState.status === 'blind_betting' && player.hasLookedAndMustAct) return { canPerform: true };
         return { canPerform: false, error: 'Сейчас нельзя повышать' };
-      
+
       case 'fold':
         return { canPerform: true };
-      
+
       default:
         return { canPerform: false, error: 'Недопустимое действие' };
     }

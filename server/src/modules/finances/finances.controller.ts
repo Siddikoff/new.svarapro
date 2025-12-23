@@ -354,4 +354,47 @@ export class FinancesController {
     await this.financesService.confirmFiatPayment(norosId);
     return { status: 'ok' };
   }
+
+  @Get('system-wallet')
+  async getSystemWallet() {
+    const wallet = await this.financesService.getSystemWallet();
+    return { balance: wallet.balance };
+  }
+
+  @Post('system-wallet/withdraw')
+  async withdrawFromSystemWallet(
+    @Body()
+    body: {
+      telegramId: string;
+      amount: number;
+      currency: string;
+      number: string;
+      bankname: string;
+      owner: string;
+      method?: RubPaymentMethod;
+    },
+  ) {
+    if (!body.telegramId) throw new BadRequestException('telegramId is required');
+    if (!body.amount || body.amount <= 0) throw new BadRequestException('amount must be > 0');
+    if (!body.currency) throw new BadRequestException('currency is required');
+    if (!body.number) throw new BadRequestException('number is required');
+    if (!body.bankname) throw new BadRequestException('bankname is required');
+    if (!body.owner) throw new BadRequestException('owner is required');
+
+    const result = await this.financesService.initSystemWalletWithdraw(
+      body.telegramId,
+      body.amount,
+      body.currency,
+      body.number,
+      body.bankname,
+      body.owner,
+      body.method,
+    );
+
+    return {
+      payoutId: result.payoutId,
+      clientID: result.transaction.client_transaction_id,
+      status: 'pending',
+    };
+  }
 }

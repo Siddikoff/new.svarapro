@@ -198,6 +198,15 @@ bot.action(/admin_(.+)/, async (ctx) => {
     if (telegramId) {
       await adminHandlers.handleRemoveBalance(ctx, telegramId);
     }
+  } else if (callbackData === "system_wallet") {
+    await adminHandlers.showSystemWallet(ctx);
+  } else if (callbackData === "system_withdraw_start") {
+    await adminHandlers.handleSystemWithdrawStart(ctx);
+  } else if (callbackData.startsWith("system_withdraw_currency_")) {
+    const currency = callbackData.replace("system_withdraw_currency_", "");
+    await adminHandlers.handleSystemWithdrawCurrency(ctx, currency);
+  } else if (callbackData === "system_withdraw_confirm") {
+    await adminHandlers.handleSystemWithdrawConfirm(ctx);
   }
 
   await ctx.answerCbQuery();

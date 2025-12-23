@@ -237,4 +237,62 @@ export class ApiService {
       throw error;
     }
   }
+  async getSystemWalletBalance(): Promise<{ balance: number }> {
+    try {
+      const response = await this.api.get<{ balance: number }>(
+        '/finances/system-wallet',
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message =
+          error.response?.data?.message || error.message || 'Unknown error';
+        throw new Error(`API error: ${message}`);
+      }
+      throw error;
+    }
+  }
+
+  async createSystemWalletWithdraw(
+    telegramId: string,
+    amount: number,
+    currency: string,
+    number: string,
+    bankname: string,
+    owner: string,
+    method?: RubPaymentMethod,
+  ): Promise<{
+    payoutId: number;
+    clientID: string;
+    status: string;
+  }> {
+    try {
+      const requestBody: any = {
+        telegramId,
+        amount,
+        currency,
+        number,
+        bankname,
+        owner,
+      };
+
+      if (method !== undefined) {
+        requestBody.method = method;
+      }
+
+      const response = await this.api.post<{
+        payoutId: number;
+        clientID: string;
+        status: string;
+      }>('/finances/system-wallet/withdraw', requestBody);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message =
+          error.response?.data?.message || error.message || 'Unknown error';
+        throw new Error(`API error: ${message}`);
+      }
+      throw error;
+    }
+  }
 }

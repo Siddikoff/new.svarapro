@@ -22,3 +22,14 @@ export interface AdminLoginState {
   awaitingPassword: boolean;
   awaitingNewPassword: boolean;
 }
+
+export interface AdminWithdrawSession {
+  currency?: string;
+  amount?: number;
+  bankId?: number;
+  method?: string; // RubPaymentMethod
+  number?: string;
+  bankname?: string;
+  owner?: string;
+  step: 'currency' | 'bank' | 'amount' | 'details' | 'confirm';
+}

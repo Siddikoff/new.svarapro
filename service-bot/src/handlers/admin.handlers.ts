@@ -4,12 +4,18 @@ import { UsersService } from "../services/users.service.js";
 import { StatsService } from "../services/stats.service.js";
 import { getMessage } from "../locales/index.js";
 
+import { ApiService } from "../services/api.service.js";
+
 export class AdminHandlers {
+  private apiService: ApiService;
+
   constructor(
     private adminService: AdminService,
     private usersService: UsersService,
     private statsService: StatsService,
-  ) {}
+  ) {
+    this.apiService = new ApiService();
+  }
 
   // Обработка команды /admin_menu
   async handleAdminMenuCommand(ctx: ServiceBotContext) {
@@ -54,12 +60,41 @@ export class AdminHandlers {
     }
   }
 
-  // Обработка ввода пароля или суммы
+  // Обработка ввода пароля, суммы или реквизитов
   async handlePasswordInput(ctx: ServiceBotContext) {
     const telegramId = ctx.from?.id.toString();
     if (!telegramId) return;
 
     const locale = "ru";
+
+    // Проверяем, ожидается ли ввод для вывода средств из системного кошелька
+    const withdrawSession = this.adminService.getWithdrawSession(telegramId);
+    if (withdrawSession) {
+      if (!ctx.message || !("text" in ctx.message)) return;
+      const text = ctx.message.text;
+      if (!text) return;
+
+      switch (withdrawSession.step) {
+        case 'details': // We reuse 'details' sequence for number -> bank -> owner
+          if (!withdrawSession.number) {
+            await this.handleSystemWithdrawReceiverInput(ctx, text);
+          } else if (!withdrawSession.bankname) {
+            await this.handleSystemWithdrawBankNameInput(ctx, text);
+          } else if (!withdrawSession.owner) {
+            await this.handleSystemWithdrawOwnerInput(ctx, text);
+          }
+          break;
+        case 'amount':
+          const amount = parseFloat(text);
+          if (isNaN(amount)) {
+            await ctx.reply("⚠️ Пожалуйста, введите корректное число.");
+            return;
+          }
+          await this.handleSystemWithdrawAmountInput(ctx, amount);
+          break;
+      }
+      return;
+    }
 
     // Проверяем, ожидается ли ввод суммы для изменения баланса
     const balanceState = this.adminService.getBalanceState(telegramId);
@@ -164,9 +199,202 @@ export class AdminHandlers {
               callback_data: "admin_stats",
             },
           ],
+          [
+            {
+              text: "🏦 Кошелек системы",
+              callback_data: "admin_system_wallet",
+            }
+          ]
         ],
       },
     });
+  }
+
+  // System Wallet Logic
+  async showSystemWallet(ctx: ServiceBotContext) {
+    try {
+      const { balance } = await this.apiService.getSystemWalletBalance();
+      const message = `🏦 *Кошелек системы*\n\n💰 Баланс: *${balance.toFixed(2)} USDT*`;
+
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '💸 Вывести средства', callback_data: 'admin_system_withdraw_start' }
+            ],
+            [
+              { text: '⬅️ Назад', callback_data: 'admin_menu' }
+            ]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error("Show system wallet error:", error);
+      await ctx.reply("❌ Ошибка получения баланса кошелька.");
+    }
+  }
+
+  async handleSystemWithdrawStart(ctx: ServiceBotContext) {
+    const telegramId = ctx.from?.id.toString();
+    if (!telegramId) return;
+
+    this.adminService.clearWithdrawSession(telegramId);
+
+    const currencies = {
+      RUB: "🇷🇺 Российский рубль (RUB)",
+      UZS: "🇺🇿 Узбекский сум (UZS)",
+      TJS: "🇹🇯 Таджикский сомони (TJS)",
+      KGS: "🇰🇬 Киргизский сом (KGS)",
+    };
+
+    const buttons = Object.entries(currencies).map(([code, name]) => ([
+      { text: name, callback_data: `admin_system_withdraw_currency_${code}` }
+    ]));
+
+    buttons.push([{ text: "🚫 Отмена", callback_data: "admin_system_wallet" }]);
+
+    await ctx.reply("💸 *Вывод средств из системного кошелька*\n\nВыберите валюту:", {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: buttons
+      }
+    });
+  }
+
+  async handleSystemWithdrawCurrency(ctx: ServiceBotContext, currency: string) {
+    const telegramId = ctx.from?.id.toString();
+    if (!telegramId) return;
+
+    this.adminService.setWithdrawSession(telegramId, {
+      currency,
+      step: 'details',
+    });
+
+    await ctx.reply(
+      `💸 *Реквизиты для вывода*\n\n` +
+      `Валюта: ${currency}\n\n` +
+      `Введите номер карты/сичта получателя:`,
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: '🚫 Отмена', callback_data: 'admin_system_wallet' }]]
+        }
+      }
+    );
+  }
+
+  async handleSystemWithdrawReceiverInput(ctx: ServiceBotContext, number: string) {
+    const telegramId = ctx.from?.id.toString();
+    if (!telegramId) return;
+
+    const session = this.adminService.getWithdrawSession(telegramId);
+    if (!session) return;
+
+    session.number = number.replace(/\s/g, '');
+    this.adminService.setWithdrawSession(telegramId, session);
+
+    await ctx.reply("🏦 Введите название банка получателя (например: Сбербанк):");
+  }
+
+  async handleSystemWithdrawBankNameInput(ctx: ServiceBotContext, bankname: string) {
+    const telegramId = ctx.from?.id.toString();
+    if (!telegramId) return;
+
+    const session = this.adminService.getWithdrawSession(telegramId);
+    if (!session) return;
+
+    session.bankname = bankname;
+    this.adminService.setWithdrawSession(telegramId, session);
+
+    await ctx.reply("👤 Введите ФИО получателя полностью:");
+  }
+
+  async handleSystemWithdrawOwnerInput(ctx: ServiceBotContext, owner: string) {
+    const telegramId = ctx.from?.id.toString();
+    if (!telegramId) return;
+
+    const session = this.adminService.getWithdrawSession(telegramId);
+    if (!session) return;
+
+    session.owner = owner;
+    session.step = 'amount';
+    this.adminService.setWithdrawSession(telegramId, session);
+
+    await ctx.reply(
+      `💰 Введите сумму для вывода в ${session.currency} (только число):`
+    );
+  }
+
+  async handleSystemWithdrawAmountInput(ctx: ServiceBotContext, amount: number) {
+    const telegramId = ctx.from?.id.toString();
+    if (!telegramId) return;
+
+    const session = this.adminService.getWithdrawSession(telegramId);
+    if (!session) return;
+
+    if (amount <= 0) {
+      await ctx.reply("⚠️ Сумма должна быть больше 0.");
+      return;
+    }
+
+    session.amount = amount;
+    session.step = 'confirm';
+    this.adminService.setWithdrawSession(telegramId, session);
+
+    const message = `✅ *Подтверждение вывода*\n\n` +
+      `💸 Валюта: ${session.currency}\n` +
+      `💰 Сумма: ${session.amount}\n` +
+      `🔢 Реквизиты: ${session.number}\n` +
+      `🏦 Банк: ${session.bankname}\n` +
+      `👤 Получатель: ${session.owner}\n\n` +
+      `Все верно?`;
+
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '✅ Подтвердить', callback_data: 'admin_system_withdraw_confirm' },
+            { text: '🚫 Отмена', callback_data: 'admin_system_wallet' }
+          ]
+        ]
+      }
+    });
+  }
+
+  async handleSystemWithdrawConfirm(ctx: ServiceBotContext) {
+    const telegramId = ctx.from?.id.toString();
+    if (!telegramId) return;
+
+    const session = this.adminService.getWithdrawSession(telegramId);
+    if (!session || !session.amount || !session.currency || !session.number || !session.bankname || !session.owner) {
+      await ctx.reply("⚠️ Ошибка сессии. Начните заново.");
+      return;
+    }
+
+    try {
+      await ctx.editMessageText("⏳ Создаём заявку на вывод...");
+      const result = await this.apiService.createSystemWalletWithdraw(
+        telegramId,
+        session.amount,
+        session.currency,
+        session.number,
+        session.bankname,
+        session.owner
+      );
+
+      await ctx.editMessageText(
+        `✅ *Заявка успешно создана!*\n\nID: \`${result.payoutId}\`\nСтатус: ${result.status}`,
+        { parse_mode: 'Markdown' }
+      );
+      this.adminService.clearWithdrawSession(telegramId);
+    } catch (error) {
+      console.error("System withdraw error:", error);
+      let msg = "Ошибка при создании заявки.";
+      if (error instanceof Error) msg = error.message;
+      await ctx.editMessageText(`❌ ${msg}`);
+      this.adminService.clearWithdrawSession(telegramId);
+    }
   }
 
   // Показать список пользователей
