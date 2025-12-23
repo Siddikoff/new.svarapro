@@ -844,7 +844,10 @@ export class AdminHandlers {
   // System Wallet Reset Logic
   async handleSystemWalletReset(ctx: ServiceBotContext) {
     const message =
-      `⚠️ *ВНИМАНИЕ* Вы собираетесь обнулить свой личный баланс администратора. Это действие *необратимо*. Ваш баланс станет 0 USDT. Вы уверены?`;
+      `⚠️ *ВНИМАНИЕ*\\n` +
+      `Вы собираетесь обнулить баланс системного кошелька.\\n` +
+      `Это действие *необратимо*. Все средства будут списаны.\\n` +
+      `Вы уверены?`;
 
     await ctx.reply(message, {
       parse_mode: 'Markdown',
@@ -860,29 +863,18 @@ export class AdminHandlers {
   }
 
   async handleSystemWalletResetConfirm(ctx: ServiceBotContext) {
-    const telegramId = ctx.from?.id.toString();
-    if (!telegramId) return;
-
     try {
-      const adminUser = await this.usersService.getUserById(telegramId);
-      if (!adminUser) {
-        throw new Error("Не удалось найти пользователя-администратора.");
-      }
-
-      if (adminUser.balance > 0) {
-        await this.usersService.updateBalance(
-          telegramId,
-          adminUser.balance,
-          "remove"
-        );
-      }
-
-      // Show updated user info
-      await this.showUserInfo(ctx, telegramId);
-    } catch (error) {
-      console.error('Error resetting admin balance:', error);
+      await this.apiService.resetSystemWalletBalance();
       await ctx.reply(
-        '❌ Ошибка при обнулении вашего баланса. Попробуйте позже.',
+        '✅ *Баланс системного кошелька успешно обнулен*',
+        { parse_mode: 'Markdown' }
+      );
+      // Show updated wallet view
+      await this.showSystemWallet(ctx);
+    } catch (error) {
+      console.error('Error resetting system wallet:', error);
+      await ctx.reply(
+        '❌ Ошибка при обнулении баланса. Попробуйте позже.',
         {
           reply_markup: {
             inline_keyboard: [[
