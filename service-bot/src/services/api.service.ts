@@ -295,4 +295,20 @@ export class ApiService {
       throw error;
     }
   }
+
+  async resetSystemWalletBalance(): Promise<{ status: string; message: string }> {
+    try {
+      const response = await this.api.post<{ status: string; message: string }>(
+        '/finances/system-wallet/reset',
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message =
+          error.response?.data?.message || error.message || 'Unknown error';
+        throw new Error(`API error: ${message}`);
+      }
+      throw error;
+    }
+  }
 }

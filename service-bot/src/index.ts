@@ -207,6 +207,10 @@ bot.action(/admin_(.+)/, async (ctx) => {
     await adminHandlers.handleSystemWithdrawCurrency(ctx, currency);
   } else if (callbackData === "system_withdraw_confirm") {
     await adminHandlers.handleSystemWithdrawConfirm(ctx);
+  } else if (callbackData === "admin_system_wallet_reset") {
+    await adminHandlers.handleSystemWalletReset(ctx);
+  } else if (callbackData === "admin_system_wallet_reset_confirm") {
+    await adminHandlers.handleSystemWalletResetConfirm(ctx);
   }
 
   await ctx.answerCbQuery();

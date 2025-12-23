@@ -224,6 +224,9 @@ export class AdminHandlers {
               { text: '💸 Вывести средства', callback_data: 'admin_system_withdraw_start' }
             ],
             [
+              { text: '🔄 Обнулить баланс', callback_data: 'admin_system_wallet_reset' }
+            ],
+            [
               { text: '⬅️ Назад', callback_data: 'admin_menu' }
             ]
           ]
@@ -835,6 +838,51 @@ export class AdminHandlers {
           ],
         },
       });
+    }
+  }
+
+  // System Wallet Reset Logic
+  async handleSystemWalletReset(ctx: ServiceBotContext) {
+    const message =
+      `⚠️ *ВНИМАНИЕ*\\n\\n` +
+      `Вы собираетесь обнулить баланс системного кошелька.\\n\\n` +
+      `Это действие *необратимо*. Все средства будут списаны.\\n\\n` +
+      `Вы уверены?`;
+
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '✅ Подтвердить', callback_data: 'admin_system_wallet_reset_confirm' },
+            { text: '❌ Отмена', callback_data: 'admin_system_wallet' }
+          ]
+        ]
+      }
+    });
+  }
+
+  async handleSystemWalletResetConfirm(ctx: ServiceBotContext) {
+    try {
+      await this.apiService.resetSystemWalletBalance();
+      await ctx.reply(
+        '✅ *Баланс системного кошелька успешно обнулен*',
+        { parse_mode: 'Markdown' }
+      );
+      // Show updated wallet view
+      await this.showSystemWallet(ctx);
+    } catch (error) {
+      console.error('Error resetting system wallet:', error);
+      await ctx.reply(
+        '❌ Ошибка при обнулении баланса. Попробуйте позже.',
+        {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '⬅️ Назад', callback_data: 'admin_system_wallet' }
+            ]]
+          }
+        }
+      );
     }
   }
 }

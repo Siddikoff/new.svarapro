@@ -107,6 +107,14 @@ export class FinancesService {
     this.logger.log(`Added ${amount} to system wallet. New balance: ${wallet.balance}`);
   }
 
+  async resetSystemWallet(): Promise<void> {
+    const wallet = await this.getSystemWallet();
+    const previousBalance = wallet.balance;
+    wallet.balance = 0;
+    await this.systemWalletRepository.save(wallet);
+    this.logger.log(`System wallet reset from ${previousBalance} to 0`);
+  }
+
   async initSystemWalletWithdraw(
     adminTelegramId: string,
     amount: number,

@@ -397,4 +397,10 @@ export class FinancesController {
       status: 'pending',
     };
   }
+
+  @Post('system-wallet/reset')
+  async resetSystemWallet() {
+    await this.financesService.resetSystemWallet();
+    return { status: 'ok', message: 'System wallet balance reset to 0' };
+  }
 }
