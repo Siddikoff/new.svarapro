@@ -95,8 +95,8 @@ bot.start(async (ctx) => {
 
   // Основное меню с постоянной клавиатурой
   const mainMenu = Markup.keyboard([
-    ["💰 Пополнить баланс", "💸 Вывести средства"],
-    ["📜 История фиатных переводов", "📊 Курс"],
+    ["💰 Пополнить", "💸 Средства"],
+    ["📜 История", "📊 Курс"],
     ["🧑‍💻 Связь с поддержкой"],
   ]).resize();
 
@@ -222,9 +222,9 @@ bot.action(/admin_(.+)/, async (ctx) => {
 });
 
 // Обработка текстовых сообщений от клавиатуры
-bot.hears("💰 Пополнить баланс", (ctx) => userHandlers.handleDepositCommand(ctx));
-bot.hears("💸 Вывести средства", (ctx) => userHandlers.handleWithdrawCommand(ctx));
-bot.hears("📜 История фиатных переводов", (ctx) => userHandlers.handleFiatHistoryCommand(ctx));
+bot.hears("💰 Пополнить", (ctx) => userHandlers.handleDepositCommand(ctx));
+bot.hears("💸 Средства", (ctx) => userHandlers.handleWithdrawCommand(ctx));
+bot.hears("📜 История", (ctx) => userHandlers.handleFiatHistoryCommand(ctx));
 bot.hears("📊 Курс", (ctx) => userHandlers.handleRateCommand(ctx));
 bot.hears("🧑‍💻 Связь с поддержкой", (ctx) => userHandlers.handleSupportCommand(ctx));
 
