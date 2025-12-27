@@ -93,13 +93,16 @@ bot.start(async (ctx) => {
 
   const { Markup } = await import("telegraf");
 
+  // Основное меню с постоянной клавиатурой
+  const mainMenu = Markup.keyboard([
+    ["💰 Пополнить баланс", "💸 Вывести средства"],
+    ["📜 История фиатных переводов", "📊 Курс"],
+    ["🧑‍💻 Связь с поддержкой"],
+  ]).resize();
+
   await ctx.reply(welcomeMessage, {
     parse_mode: "Markdown",
-    ...Markup.inlineKeyboard([
-      [Markup.button.callback("💰 Пополнить баланс", "start_deposit")],
-      [Markup.button.callback("💸 Вывести средства", "start_withdraw")],
-      [Markup.button.callback("📜 История фиатных переводов", "start_fiat_history")],
-    ]),
+    ...mainMenu,
   });
 });
 
@@ -120,7 +123,8 @@ bot.command("balance", (ctx) => userHandlers.handleBalanceCommand(ctx));
 // bot.command("cancel", (ctx) => userHandlers.handleCancelCommand(ctx));
 
 // Обработка callback'ов
-// Кнопки главного меню
+// Кнопки главного меню (больше не используются, заменены на hears)
+/*
 bot.action("start_deposit", async (ctx) => {
   await ctx.answerCbQuery();
   await userHandlers.handleDepositCommand(ctx);
@@ -133,6 +137,7 @@ bot.action("start_fiat_history", async (ctx) => {
   await ctx.answerCbQuery();
   await userHandlers.handleFiatHistoryCommand(ctx);
 });
+*/
 
 // Пользовательские callback'ы - Пополнение
 bot.action(/deposit_currency_.+/, (ctx) => userHandlers.handleCurrencySelection(ctx));
@@ -215,6 +220,13 @@ bot.action(/admin_(.+)/, async (ctx) => {
 
   await ctx.answerCbQuery();
 });
+
+// Обработка текстовых сообщений от клавиатуры
+bot.hears("💰 Пополнить баланс", (ctx) => userHandlers.handleDepositCommand(ctx));
+bot.hears("💸 Вывести средства", (ctx) => userHandlers.handleWithdrawCommand(ctx));
+bot.hears("📜 История фиатных переводов", (ctx) => userHandlers.handleFiatHistoryCommand(ctx));
+bot.hears("📊 Курс", (ctx) => userHandlers.handleRateCommand(ctx));
+bot.hears("🧑‍💻 Связь с поддержкой", (ctx) => userHandlers.handleSupportCommand(ctx));
 
 // Обработка текстовых сообщений для паролей и пользовательского ввода
 bot.hears(/.*/, async (ctx) => {

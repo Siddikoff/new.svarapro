@@ -91,6 +91,22 @@ export class FinancesService {
     });
   }
 
+  async getFiatRates(): Promise<{ currency: string; rate: number }[]> {
+    const currencies = ['RUB', 'UZS', 'TJS', 'KGS'];
+    const rates: { currency: string; rate: number }[] = [];
+
+    for (const currency of currencies) {
+      try {
+        const rate = await this.apiService.getCurrencyRate(currency);
+        rates.push({ currency, rate });
+      } catch (error) {
+        this.logger.error(`Failed to get rate for currency: ${currency}`, error);
+        // Skip this currency and continue with the others
+      }
+    }
+    return rates;
+  }
+
   async getSystemWallet(): Promise<SystemWallet> {
     let wallet = await this.systemWalletRepository.findOne({ where: { id: 1 } });
     if (!wallet) {

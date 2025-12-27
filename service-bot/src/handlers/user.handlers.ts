@@ -454,15 +454,32 @@ export class UserHandlers {
   ): Promise<void> {
     const session = this.getSession(userId);
 
+    const errorMessage = "⚠️ Ошибка: не все данные заполнены. Начните заново с /deposit";
     if (!session.currency || !session.bankId || !session.amount) {
-      await ctx.editMessageText(
-        "⚠️ Ошибка: не все данные заполнены. Начните заново с /deposit",
-      );
+      if (ctx.callbackQuery) {
+        await ctx.editMessageText(errorMessage);
+      } else {
+        await ctx.reply(errorMessage);
+      }
       this.clearSession(userId);
       return;
     }
 
-    await ctx.editMessageText("⏳ Создаём платёж...");
+    let loadingMessage;
+    if (ctx.callbackQuery) {
+      const result = await ctx.editMessageText("⏳ Создаём платёж...");
+      if (result === true) {
+        // Should not happen in this bot's flow
+        this.clearSession(userId);
+        return;
+      }
+      loadingMessage = result;
+    } else {
+      loadingMessage = await ctx.reply("⏳ Создаём платёж...");
+    }
+
+    const chatId = loadingMessage.chat.id;
+    const messageId = loadingMessage.message_id;
 
     try {
       const result = await this.apiService.createFiatTransaction(
@@ -472,12 +489,18 @@ export class UserHandlers {
         session.currency,
       );
 
-      const message = `✅ *Платёж создан!*
+      let message = `✅ *Платёж создан!*
 
-💰 *Сумма:* ${session.amount.toLocaleString("ru-RU")} ${session.currency}
-💵 *Курс:* 1 ${session.currency} = ${result.exchangeRate.toFixed(6)} USDT
-💎 *Вы получите:* ~${result.estimatedUSDT.toFixed(2)} USDT
+💰 *Сумма:* ${session.amount.toLocaleString("ru-RU")} ${session.currency}\n`;
 
+      if (result.exchangeRate) {
+        message += `💵 *Курс:* 1 ${session.currency} = ${result.exchangeRate.toFixed(6)} USDT\n`;
+      }
+      if (result.estimatedUSDT) {
+        message += `💎 *Вы получите:* ~${result.estimatedUSDT.toFixed(2)} USDT\n`;
+      }
+
+      message += `
 🏦 *Реквизиты для оплаты:*
 ${result.bankName ? `🏛️ Банк: ${result.bankName}\n` : ""}👤 Получатель: ${result.recipientName}
 🔢 Номер: \`${result.receiver}\`
@@ -489,7 +512,7 @@ ${result.manual ? `▪️ ${result.manual}\n` : ""}
 
 ⚠️ *Важно: совершите платеж в течении 10 минут и нажмите кнопку 'Я оплатил'*`;
 
-      await ctx.editMessageText(message, {
+      await ctx.telegram.editMessageText(chatId, messageId, undefined, message, {
         parse_mode: "Markdown",
         ...Markup.inlineKeyboard([
           [Markup.button.callback("✅ Я оплатил", `deposit_done_${result.norosId}`)],
@@ -504,7 +527,10 @@ ${result.manual ? `▪️ ${result.manual}\n` : ""}
         displayMessage = rawMessage.replace("API error: ", "");
       }
 
-      await ctx.editMessageText(
+      await ctx.telegram.editMessageText(
+        chatId,
+        messageId,
+        undefined,
         `⚠️ Ошибка при создании платежа:\n${displayMessage}\n\nПопробуйте снова с /deposit`,
       );
       this.clearSession(userId);
@@ -616,6 +642,50 @@ ${result.manual ? `▪️ ${result.manual}\n` : ""}
         `⚠️ Ошибка при получении истории транзакций:\n${errorMessage}\n\nПопробуйте позже.`,
       );
     }
+  }
+
+  async handleRateCommand(ctx: ServiceBotContext): Promise<void> {
+    try {
+      const rates = await this.apiService.getFiatRates();
+      if (!rates || rates.length === 0) {
+        await ctx.reply("⚠️ Не удалось загрузить курсы валют.");
+        return;
+      }
+
+      let message = "📊 *Текущие курсы покупки 1 USDT:*\n\n";
+      rates.forEach((item) => {
+        // Calculate X fiat = 1 USDT
+        const inverseRate = 1 / item.rate;
+        // Check for division by zero or invalid rate
+        if (item.rate > 0) {
+            message += `  ▪️ \`${inverseRate.toFixed(2)}\` ${item.currency}\n`;
+        } else {
+            message += `  ▪️ ${item.currency}: Курс недоступен\n`;
+        }
+      });
+
+      message += "\n_Курс может незначительно отличаться при создании заявки._";
+
+      await ctx.reply(message, { parse_mode: "Markdown" });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Неизвестная ошибка";
+      await ctx.reply(
+        `⚠️ Ошибка при получении курсов:\n${errorMessage}\n\nПопробуйте позже.`,
+      );
+    }
+  }
+
+  async handleSupportCommand(ctx: ServiceBotContext): Promise<void> {
+    const supportMessage =
+      "🧑‍💻 *Связь с поддержкой*\n\n" +
+      "Для получения помощи или решения вопросов, пожалуйста, напишите нашему боту поддержки: " +
+      "[t.me/SvaraProSupportbot](https://t.me/SvaraProSupportbot)";
+
+    await ctx.reply(supportMessage, {
+      parse_mode: "Markdown",
+      link_preview_options: { is_disabled: true },
+    });
   }
 
   async handleTextMessage(ctx: ServiceBotContext): Promise<void> {
@@ -756,31 +826,19 @@ ${result.manual ? `▪️ ${result.manual}\n` : ""}
     this.clearSession(userId);
     this.clearWithdrawSession(userId);
 
-    // Answer the callback query to remove loading state
-    await ctx.answerCbQuery("Операция отменена");
+    try {
+      // Try to answer callback query if the command was initiated from a button
+      await ctx.answerCbQuery("🚫 Операция отменена");
+    } catch (error) {
+      // Ignore error if it's not a callback query
+    }
 
-    // Show main menu with balance
     const mainMenuMessage = await getMainMenuMessage(this.apiService, userId, "🚫 Операция отменена.");
 
-    const menuButtons = Markup.inlineKeyboard([
-      [Markup.button.callback("💰 Пополнить баланс", "start_deposit")],
-      [Markup.button.callback("💸 Вывести средства", "start_withdraw")],
-      [Markup.button.callback("📜 История фиатных переводов", "start_fiat_history")],
-    ]);
-
-    try {
-      // Try to edit the current message
-      await ctx.editMessageText(mainMenuMessage, {
-        parse_mode: "Markdown",
-        ...menuButtons,
-      });
-    } catch (error) {
-      // If edit fails, send a new message
-      await ctx.reply(mainMenuMessage, {
-        parse_mode: "Markdown",
-        ...menuButtons,
-      });
-    }
+    // Just send the message, the reply keyboard is persistent
+    await ctx.reply(mainMenuMessage, {
+      parse_mode: "Markdown",
+    });
   }
 
   // --- WITHDRAW FLOW ---
@@ -788,7 +846,7 @@ ${result.manual ? `▪️ ${result.manual}\n` : ""}
   async handleWithdrawCommand(ctx: ServiceBotContext): Promise<void> {
     const userId = ctx.from?.id.toString();
     if (!userId) return;
-
+    
     this.clearWithdrawSession(userId);
 
     const message =

@@ -173,6 +173,12 @@ export class FinancesController {
     return this.financesService.getBanks(getBanksDto.currency, getBanksDto.amount, getBanksDto.method);
   }
 
+  @Get('fiat/rates')
+  async getFiatRates() {
+    this.logger.log(`Request to get fiat rates`);
+    return this.financesService.getFiatRates();
+  }
+
   @Post('fiat/transaction')
   async createFiatTransaction(
     @Body()

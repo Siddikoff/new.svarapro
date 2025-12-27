@@ -52,7 +52,7 @@ export class ApiService {
       process.env.API_BASE_URL || "https://svarapro.com/api/v1";
     this.api = axios.create({
       baseURL: apiBaseUrl,
-      timeout: 15000,
+      timeout: 30000,
       headers: {
         "Content-Type": "application/json",
       },
@@ -211,6 +211,22 @@ export class ApiService {
     try {
       const response = await this.api.get<FiatTransactionHistoryItem[]>(
         `/finances/history/fiat/${telegramId}`,
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message =
+          error.response?.data?.message || error.message || "Unknown error";
+        throw new Error(`API error: ${message}`);
+      }
+      throw error;
+    }
+  }
+
+  async getFiatRates(): Promise<{ currency: string; rate: number }[]> {
+    try {
+      const response = await this.api.get<{ currency: string; rate: number }[]>(
+        "/finances/fiat/rates",
       );
       return response.data;
     } catch (error) {
