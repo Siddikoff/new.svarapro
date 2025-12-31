@@ -141,8 +141,7 @@ bot.action("start_fiat_history", async (ctx) => {
 
 // Пользовательские callback'ы - Пополнение
 bot.action(/deposit_currency_.+/, (ctx) => userHandlers.handleCurrencySelection(ctx));
-bot.action(/deposit_rub_amount_.+/, (ctx) => userHandlers.handleRubAmountSelection(ctx));
-bot.action("deposit_rub_custom_amount", (ctx) => userHandlers.handleRubCustomAmount(ctx));
+
 bot.action(/deposit_bank_.+/, (ctx) => userHandlers.handleBankSelection(ctx));
 bot.action(/deposit_amount_.+/, (ctx) => userHandlers.handleAmountSelection(ctx));
 bot.action("deposit_custom_amount", (ctx) => userHandlers.handleCustomAmount(ctx));
