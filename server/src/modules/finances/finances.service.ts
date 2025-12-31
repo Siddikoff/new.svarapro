@@ -425,6 +425,7 @@ export class FinancesService {
     // Exchange rate info
     exchangeRate: number; // Current exchange rate
     estimatedUSDT: number; // Estimated USDT amount user will receive
+    fiatAmountToPay: number; // The final amount in fiat user has to pay
   }> {
     // Basic validation
     if (!amount || amount <= 0) {
@@ -441,9 +442,18 @@ export class FinancesService {
     const clientID = uuidv4(); // Our internal orderId
 
     try {
+      // Calculate amount with fee
+      const feePercentage = this.getFeePercentage('deposit', currency, method);
+      // We charge the user an amount such that after our fee, they get the 'amount' they requested
+      const amountWithFee = Math.ceil(amount / (1 - feePercentage));
+
+      this.logger.log(
+        `Fiat deposit initiated: user wants to get ${amount} ${currency}. With fee, they need to pay ${amountWithFee} ${currency}.`,
+      );
+
       // Noros `createPayin` uses the `/transaction` endpoint
       const payinResponse = await this.norosService.createPayin(
-        amount,
+        amountWithFee, // Use amount with fee
         bankId,
         currency,
         clientID, // Pass our internal ID as orderId
@@ -454,33 +464,31 @@ export class FinancesService {
         method, // Pass RUB payment method
       );
 
-      // Accept payment terms (PATCH /transaction/{id}) - might be required to get full details
+      // Accept payment terms (PATCH /transaction/{id})
       try {
-        await this.norosService.acceptPaymentTerms(payinResponse.id, currency, method, amount);
+        await this.norosService.acceptPaymentTerms(payinResponse.id, currency, method, amountWithFee);
         this.logger.log(`Accepted payment terms for transaction ${payinResponse.id}`);
       } catch (error) {
         this.logger.warn(`Could not accept payment terms: ${error instanceof Error ? error.message : String(error)}`);
       }
 
-      // Immediately fetch full transaction details (Noros may not return all fields on creation)
+      // Immediately fetch full transaction details
       const fullTransactionDetails = await this.norosService.getTransactionStatus(
         payinResponse.id,
         currency,
         method,
-        amount, // Pass amount so NorosService can auto-select the correct RUB variant
+        amountWithFee, // Use amount with fee
       );
 
       this.logger.log(`Full transaction details: ${JSON.stringify(fullTransactionDetails)}`);
 
-      // Validate that we have the required payment details
       if (!fullTransactionDetails.card || !fullTransactionDetails.cardOwner) {
         this.logger.error(
           `Transaction ${payinResponse.id} created but missing payment requisites. Status: ${fullTransactionDetails.status}`,
         );
 
-        // Try to cancel the transaction in Noros since we can't proceed
         try {
-          await this.norosService.cancelTransaction(payinResponse.id, currency, method, amount);
+          await this.norosService.cancelTransaction(payinResponse.id, currency, method, amountWithFee);
           this.logger.log(`Cancelled incomplete transaction ${payinResponse.id}`);
         } catch (cancelError) {
           this.logger.warn(`Failed to cancel transaction ${payinResponse.id}: ${cancelError instanceof Error ? cancelError.message : String(cancelError)}`);
@@ -496,19 +504,20 @@ export class FinancesService {
         type: 'deposit',
         currency,
         amount: 0, // Will be updated on status check
-        address: fullTransactionDetails.card || 'FIAT_DEPOSIT', // Noros returns receiver card in 'card' field, fallback for fiat
-        tracker_id: payinResponse.id.toString(), // Store Noros transaction ID
+        address: fullTransactionDetails.card || 'FIAT_DEPOSIT',
+        tracker_id: payinResponse.id.toString(),
         client_transaction_id: clientID,
         status: 'pending',
-        payment_provider: 'noros', // Set provider to noros
-        token: fullTransactionDetails.bankReceiver, // Store bank name as token
-        fiat_amount: amount,
-        rate: null, // Noros does not provide a rate in this response
+        payment_provider: 'noros',
+        token: fullTransactionDetails.bankReceiver,
+        fiat_amount: amountWithFee, // Store the full amount to be paid
+        rate: null,
         extra: {
           bankName: fullTransactionDetails.bankReceiver,
           recipientName: fullTransactionDetails.cardOwner,
           manual: fullTransactionDetails.manual,
-          rubMethod: method, // Store RUB payment method for future reference
+          rubMethod: method,
+          baseFiatAmount: amount, // Store the original requested amount
         },
       });
 
@@ -517,17 +526,15 @@ export class FinancesService {
       );
 
       this.logger.log(
-        `Noros fiat transaction initiated: norosId: ${payinResponse.id}, clientID: ${clientID}, currency: ${currency}, bankId: ${bankId}, amount: ${amount}`,
+        `Noros fiat transaction initiated: norosId: ${payinResponse.id}, clientID: ${clientID}, currency: ${currency}, bankId: ${bankId}, amount: ${amountWithFee}`,
       );
 
-      // Get exchange rate and calculate estimated USDT (with fee)
+      // Get exchange rate and calculate estimated USDT (based on the clean amount)
       const exchangeRate = await this.apiService.getCurrencyRate(currency);
-      const feePercentage = this.getFeePercentage('deposit', currency, method);
-      const estimatedUSDTBeforeFee = amount * exchangeRate;
-      const estimatedUSDT = estimatedUSDTBeforeFee * (1 - feePercentage); // Deduct fee
+      const estimatedUSDT = amount * exchangeRate; // User receives USDT equivalent of the base amount
 
       this.logger.log(
-        `Exchange rate for ${currency}: ${exchangeRate}, fee: ${(feePercentage * 100).toFixed(1)}%, estimated USDT before fee: ${estimatedUSDTBeforeFee.toFixed(2)}, after fee: ${estimatedUSDT.toFixed(2)}`,
+        `Exchange rate for ${currency}: ${exchangeRate}, base amount: ${amount}, estimated USDT: ${estimatedUSDT.toFixed(2)}`,
       );
 
       return {
@@ -538,6 +545,7 @@ export class FinancesService {
         manual: fullTransactionDetails.manual,
         exchangeRate,
         estimatedUSDT,
+        fiatAmountToPay: amountWithFee,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -587,15 +595,16 @@ export class FinancesService {
       throw new BadRequestException('User not found');
     }
 
-    // Convert fiat amount to USDT to debit from balance
     const exchangeRate = await this.apiService.getCurrencyRate(currency);
     const feePercentage = this.getFeePercentage('withdraw', currency, method);
-    const fiatAmount = amount; // User specified amount in fiat currency
-    const usdtEquivalent = fiatAmount * exchangeRate; // USDT equivalent of fiat
-    const usdtToDebit = usdtEquivalent / (1 - feePercentage); // USDT to debit including fee
+
+    // The user requests to withdraw 'amount'. We debit them for the full USDT equivalent.
+    const usdtToDebit = amount * exchangeRate;
+    // The actual fiat amount they receive is the requested amount minus our fee.
+    const fiatAmountToReceive = Math.floor(amount * (1 - feePercentage));
 
     this.logger.log(
-      `Withdraw calculation: ${fiatAmount} ${currency} * ${exchangeRate} = ${usdtEquivalent.toFixed(2)} USDT, with ${(feePercentage * 100).toFixed(1)}% fee: ${usdtToDebit.toFixed(2)} USDT to debit`,
+      `Withdraw calculation: user requests ${amount} ${currency}. They will receive ${fiatAmountToReceive} ${currency}. Cost to user: ${usdtToDebit.toFixed(2)} USDT. Fee is ${(feePercentage * 100).toFixed(1)}%`,
     );
 
     // Check balance in USDT
@@ -614,7 +623,7 @@ export class FinancesService {
 
     try {
       const payoutResponse = await this.norosService.createPayout(
-        amount,
+        fiatAmountToReceive, // Send the amount after fee deduction
         currency,
         number,
         bankname,
@@ -634,12 +643,13 @@ export class FinancesService {
         status: 'pending', // Will be polled for updates
         payment_provider: 'noros',
         token: bankname,
-        fiat_amount: fiatAmount, // Fiat amount user will receive
+        fiat_amount: fiatAmountToReceive, // Fiat amount user will receive
         rate: exchangeRate, // Exchange rate used
         extra: {
           bankName: bankname,
           recipientName: owner,
           rubMethod: method, // Store RUB payment method for future reference
+          requestedFiatAmount: amount, // Store original requested amount
         },
       });
 
@@ -648,7 +658,7 @@ export class FinancesService {
       );
 
       this.logger.log(
-        `Noros fiat withdrawal initiated: payoutId: ${payoutResponse.id}, clientID: ${clientID}, currency: ${currency}, amount: ${amount}`,
+        `Noros fiat withdrawal initiated: payoutId: ${payoutResponse.id}, clientID: ${clientID}, currency: ${currency}, requested: ${amount}, sent: ${fiatAmountToReceive}`,
       );
 
       return {
@@ -964,24 +974,38 @@ export class FinancesService {
 
         transaction.status = 'complete';
 
-        // Convert fiat currency to USDT using exchange rate (with fee)
-        const currencyRate = await this.apiService.getCurrencyRate(transaction.currency);
-        const feePercentage = this.getFeePercentage(transaction.type, transaction.currency, rubMethod);
-        const convertedAmountBeforeFee = statusData.amount * currencyRate;
-        const convertedAmount = convertedAmountBeforeFee * (1 - feePercentage); // Deduct fee
-
-        transaction.amount = convertedAmount;
-        transaction.rate = currencyRate;
-
         const user = await this.userRepository.findOne({
           where: { id: transaction.user.id },
         });
 
         if (user) {
           if (transaction.type === 'deposit') {
-            this.logger.log(
-              `Fiat deposit conversion: ${statusData.amount} ${transaction.currency} * ${currencyRate} = ${convertedAmountBeforeFee.toFixed(2)} USDT, after ${(feePercentage * 100).toFixed(1)}% fee: ${convertedAmount.toFixed(2)} USDT`,
-            );
+            const currencyRate = await this.apiService.getCurrencyRate(transaction.currency);
+            let convertedAmount: number;
+
+            // New logic: use baseFiatAmount if available
+            const baseFiatAmount = transaction.extra?.baseFiatAmount as number | undefined;
+
+            if (baseFiatAmount) {
+              // Calculate USDT based on the original amount requested by the user
+              convertedAmount = baseFiatAmount * currencyRate;
+              this.logger.log(
+                `Fiat deposit (new): crediting user with USDT equivalent of base amount. Base: ${baseFiatAmount} ${transaction.currency}, Rate: ${currencyRate}, Amount: ${convertedAmount.toFixed(2)} USDT`,
+              );
+            } else {
+              // Fallback for old transactions: deduct fee from the paid amount
+              this.logger.warn(`Transaction ${transaction.id} is missing 'baseFiatAmount'. Using fallback fee calculation.`);
+              const feePercentage = this.getFeePercentage(transaction.type, transaction.currency, rubMethod);
+              const convertedAmountBeforeFee = statusData.amount * currencyRate;
+              // This is an approximation of the base amount
+              convertedAmount = convertedAmountBeforeFee * (1 - feePercentage); 
+              this.logger.log(
+                `Fiat deposit (fallback): ${statusData.amount} ${transaction.currency} * ${currencyRate} = ${convertedAmountBeforeFee.toFixed(2)} USDT, after ~${(feePercentage * 100).toFixed(1)}% fee: ${convertedAmount.toFixed(2)} USDT`,
+              );
+            }
+
+            transaction.amount = convertedAmount;
+            transaction.rate = currencyRate;
 
             user.balance += convertedAmount;
             user.totalDeposit += convertedAmount;
@@ -1042,7 +1066,8 @@ export class FinancesService {
                 else if (referralCount > 100) refBonus = 10;
 
                 const bonusAmount =
-                  ((convertedAmount - 100) * refBonus) / 100;
+                  ((convertedAmount - 100) * refBonus) /
+                  100;
                 if (bonusAmount > 0) {
                   referrer.refBalance += bonusAmount;
                   await this.userRepository.save(referrer);
