@@ -259,6 +259,7 @@ export class FinancesController {
       manual: result.manual,
       exchangeRate: result.exchangeRate,
       estimatedUSDT: result.estimatedUSDT,
+      fiatAmountToPay: result.fiatAmountToPay,
     };
   }
 

@@ -382,9 +382,11 @@ export class UserHandlers {
         session.currency,
       );
 
+      const amountToPay = result.fiatAmountToPay;
+
       let message = `✅ *Платёж создан!*
 
-💰 *Сумма:* ${session.amount.toLocaleString("ru-RU")} ${session.currency}\n`;
+💰 *Сумма к оплате:* ${amountToPay.toLocaleString("ru-RU")} ${session.currency}\n`;
 
       if (result.exchangeRate) {
         message += `💵 *Курс:* 1 ${session.currency} = ${result.exchangeRate.toFixed(6)} USDT\n`;
@@ -399,7 +401,7 @@ ${result.bankName ? `🏛️ Банк: ${result.bankName}\n` : ""}👤 Полу�
 🔢 Номер: \`${result.receiver}\`
 
 ‼️ *Важно:*
-▪️ Переведите точную сумму: *${session.amount} ${session.currency}*
+▪️ Переведите точную сумму: *${amountToPay.toLocaleString("ru-RU")} ${session.currency}*
 ${result.manual ? `▪️ ${result.manual}\n` : ""}
 🆔 ID платежа: \`${result.clientID}\`
 
@@ -590,10 +592,13 @@ ${result.manual ? `▪️ ${result.manual}\n` : ""}
     const text =
       ctx.message && "text" in ctx.message ? ctx.message.text.trim() : "";
 
+    console.log(`[handleTextMessage] User: ${userId}, Text: "${text}", Session:`, JSON.stringify(depositSession));
+
     if (!text) return;
 
     // Check if waiting for ANY custom deposit amount
     if (depositSession.awaitingCustomAmount || depositSession.amount === -1) {
+      console.log(`[handleTextMessage] Custom amount condition met for user: ${userId}`);
       const amount = parseInt(text);
       const currency = depositSession.currency || '';
       const minAmount = this.minAmounts[currency] || 0;
@@ -638,9 +643,11 @@ ${result.manual ? `▪️ ${result.manual}\n` : ""}
       // Clear flag and set amount
       depositSession.awaitingCustomAmount = false;
       depositSession.amount = amount;
+      console.log(`[handleTextMessage] Session updated for user ${userId}:`, JSON.stringify(depositSession));
 
       // Now that we have the amount, proceed to bank selection for all currencies
       try {
+        console.log(`[handleTextMessage] Getting banks for user ${userId} with amount ${amount}`);
         const banks = await this.apiService.getFiatBanks(currency, amount);
 
         if (!banks || banks.length === 0) {
@@ -665,6 +672,7 @@ ${result.manual ? `▪️ ${result.manual}\n` : ""}
         buttons.push(Markup.button.callback("⬅️ Назад", `deposit_back_currency`));
         buttons.push(Markup.button.callback("🚫 Отмена", "cancel_operation"));
 
+        console.log(`[handleTextMessage] Replying with bank list to user ${userId}`);
         await ctx.reply(message, {
           parse_mode: "Markdown",
           ...Markup.inlineKeyboard(buttons, { columns: 1 }),
@@ -672,10 +680,13 @@ ${result.manual ? `▪️ ${result.manual}\n` : ""}
       } catch (error) {
         this.clearSession(userId);
         const message = error instanceof Error ? error.message : String(error);
+        console.error(`[handleTextMessage] Error getting banks for user ${userId}:`, error);
         await ctx.reply(`⚠️ Ошибка при загрузке списка банков: ${message}`);
       }
       return;
     }
+
+    console.log(`[handleTextMessage] No custom amount condition met for user: ${userId}`);
 
     // Check if waiting for withdrawal details
     if (withdrawSession.waitingFor) {

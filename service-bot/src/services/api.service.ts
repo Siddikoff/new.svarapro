@@ -16,6 +16,7 @@ export interface NorosFiatTransactionResponse {
   manual: string;
   exchangeRate: number;
   estimatedUSDT: number;
+  fiatAmountToPay: number;
 }
 
 export interface UserProfile {
