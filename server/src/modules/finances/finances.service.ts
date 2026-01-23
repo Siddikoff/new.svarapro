@@ -53,16 +53,27 @@ export class FinancesService {
    * @param type - 'deposit' or 'withdraw'
    * @param currency - Currency code (RUB, UZS, KGS)
    * @param method - Optional RUB payment method (CLASSIC, 1_5K, ALFA)
+   * @param amount - Optional amount for auto-selecting RUB method
    * @returns Fee as decimal (e.g., 0.15 for 15%)
    */
   private getFeePercentage(
     type: 'deposit' | 'withdraw',
     currency: string,
     method?: RubPaymentMethod,
+    amount?: number,
   ): number {
     if (type === 'deposit') {
-      if (currency === 'RUB' && method) {
-        return this.feeConfig.deposit.RUB[method] || this.feeConfig.deposit.RUB.CLASSIC;
+      if (currency === 'RUB') {
+        // Auto-select method based on amount if not provided
+        let rubMethod = method;
+        if (!rubMethod && amount !== undefined) {
+          if (amount >= 1000 && amount < 5000) {
+            rubMethod = RubPaymentMethod.SMALL;
+          } else {
+            rubMethod = RubPaymentMethod.CLASSIC;
+          }
+        }
+        return this.feeConfig.deposit.RUB[rubMethod || 'CLASSIC'] || this.feeConfig.deposit.RUB.CLASSIC;
       }
       return this.feeConfig.deposit[currency] || 0.10; // Default 10% if not configured
     } else {
@@ -443,7 +454,7 @@ export class FinancesService {
 
     try {
       // Calculate amount with fee
-      const feePercentage = this.getFeePercentage('deposit', currency, method);
+      const feePercentage = this.getFeePercentage('deposit', currency, method, amount);
       // We charge the user an amount such that after our fee, they get the 'amount' they requested
       const amountWithFee = Math.ceil(amount / (1 - feePercentage));
 
@@ -995,7 +1006,7 @@ export class FinancesService {
             } else {
               // Fallback for old transactions: deduct fee from the paid amount
               this.logger.warn(`Transaction ${transaction.id} is missing 'baseFiatAmount'. Using fallback fee calculation.`);
-              const feePercentage = this.getFeePercentage(transaction.type, transaction.currency, rubMethod);
+              const feePercentage = this.getFeePercentage(transaction.type, transaction.currency, rubMethod, statusData.amount);
               const convertedAmountBeforeFee = statusData.amount * currencyRate;
               // This is an approximation of the base amount
               convertedAmount = convertedAmountBeforeFee * (1 - feePercentage); 
