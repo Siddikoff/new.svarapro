@@ -23,8 +23,10 @@
  * backoff). Connection lifecycle is mirrored into `connectionStore`
  * so React components can show a status badge.
  *
- * When `VITE_SOCKET_URL` is unset, `connect` is a no-op — the lobby
- * still works via REST polling, just without push updates.
+ * When `VITE_SOCKET_URL` is unset, the socket falls back to
+ * `window.location.origin` so the bundle served by nginx (which already
+ * proxies `socket.io/`) just works without env wiring. In SSR / Node
+ * test contexts where `window` is absent, `connect` is a no-op.
  */
 
 import type { Socket } from 'socket.io-client';
@@ -48,7 +50,15 @@ export interface ConnectSocketOptions {
 type SocketHandler<P = unknown> = (payload: P) => void;
 type SocketUnsubscribe = () => void;
 
-const SOCKET_URL: string = import.meta.env?.VITE_SOCKET_URL ?? '';
+const ENV_SOCKET_URL: string = import.meta.env?.VITE_SOCKET_URL ?? '';
+
+const resolveSocketUrl = (): string | null => {
+  if (ENV_SOCKET_URL) return ENV_SOCKET_URL;
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return null;
+};
 
 let socket: Socket | null = null;
 /** Listeners registered before the socket exists are replayed on connect. */
@@ -73,7 +83,8 @@ export function connectSocket(options: ConnectSocketOptions): void;
 export function connectSocket(
   arg: string | null | ConnectSocketOptions,
 ): void {
-  if (!SOCKET_URL) return;
+  const url = resolveSocketUrl();
+  if (!url) return;
   if (socket?.connected) return;
 
   const options: ConnectSocketOptions =
@@ -85,7 +96,7 @@ export function connectSocket(
   if (options.userData) auth.userData = options.userData;
 
   setStatus(CONNECTION_STATUS.connecting);
-  socket = io(SOCKET_URL, {
+  socket = io(url, {
     transports: ['websocket'],
     auth: Object.keys(auth).length > 0 ? auth : undefined,
     reconnection: true,
