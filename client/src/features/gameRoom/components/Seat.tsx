@@ -45,7 +45,13 @@ interface AvatarProps {
 }
 
 function Avatar({ photo, size = AVATAR, winner = false }: AvatarProps) {
-  const url = `https://i.pravatar.cc/120?img=${photo}`;
+  // Photo is either a numeric pravatar.cc seed (legacy v143 stand-ins) or a
+  // direct URL string (real Telegram/CDN avatars). Treat anything that
+  // looks like a protocol URL as the literal image URL.
+  const url =
+    typeof photo === 'string' && /^(https?:)?\/\//i.test(photo)
+      ? photo
+      : `https://i.pravatar.cc/120?img=${photo}`;
   return (
     <div
       className={`${styles.avatarWrap}${winner ? ' ' + styles.avatarWrapWinner : ''}`}
