@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 import { loginWithInitData } from '../api/auth';
-import { setAuthToken } from '../api/client';
+import { getAuthToken, setAuthToken } from '../api/client';
 import { fetchCurrentUser } from '../api/user';
 import { MOCK_USER } from '../data/mocks';
 import { getTelegramAuthPayload } from '../services/telegram';
@@ -49,7 +49,10 @@ const round2 = (value: number): number => parseFloat(value.toFixed(2));
 
 export const useAuthStore = create<AuthStoreState>((set, get) => ({
   user: MOCK_USER,
-  token: null,
+  // Pick up any JWT persisted by the api/client localStorage helpers so a
+  // page reload doesn't kick the user back to anonymous mode while we wait
+  // for `login()` to refresh.
+  token: getAuthToken(),
   pendingRoomId: null,
   isAuthenticated: false,
   isLoading: false,

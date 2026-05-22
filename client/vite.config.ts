@@ -57,10 +57,20 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     proxy: {
+      // Forward `/api/*` and `/socket.io/*` straight to the NestJS backend
+      // without stripping the prefix. Nest mounts everything under
+      // `app.setGlobalPrefix('api/v1')`, so a client request like
+      // `/api/v1/auth/login` reaches the backend untouched. The previous
+      // `rewrite: (p) => p.replace(/^\/api/, '')` dropped the `/api`, leaving
+      // `/v1/auth/login` which the server doesn't expose.
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/api/, ''),
+      },
+      '/socket.io': {
+        target: 'http://localhost:3000',
+        ws: true,
+        changeOrigin: true,
       },
     },
   },

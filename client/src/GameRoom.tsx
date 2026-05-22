@@ -34,6 +34,7 @@ import {
   HAND_FOLD_FLIGHT_MS,
   HAND_FOLD_TOTAL_MS,
   type SeatAnchorPos,
+  SEATS_DEFAULT,
   TABLE_PRESETS,
 } from './features/gameRoom/constants';
 import { type Card,dealHand, preloadCardImages, svaraHandScore } from './features/gameRoom/deck';
@@ -44,7 +45,7 @@ import { type RotationSeat,useSeatRotation } from './features/gameRoom/hooks/use
 import { useTgBackButton } from './features/gameRoom/hooks/useTgBackButton';
 import { playCardFlickSound, playCardOpenSound, playPokerChipSound, playSvaraAnnounceSound, playTurnStartSound, playWinnerSound } from './features/gameRoom/sounds';
 import styles from './GameRoom.module.css';
-import { sendGameAction } from './services/gameSocket';
+import { sendChatMessage, sendGameAction, subscribeToChat, subscribeToGameState } from './services/gameSocket';
 import { hapticTap } from './services/haptics';
 import { getTelegramWebApp, shareToTelegram } from './services/telegram';
 import { useAuthStore } from './store/authStore';
@@ -537,7 +538,14 @@ export default function GameRoom({
   //     (in real life sound travels slower than light, our brain auto-
   //     compensates). Tying the offset to the animation constant keeps it
   //     honest if we ever retune the duration.
-  const CHIP_SOUND_OFFSET_MS = Math.round(ANTE_CHIP_DURATION_MS * 0.58) - 50;
+  // `ANTE_CHIP_DURATION_MS` is a module-level constant, so this expression
+  // is a stable build-time value — pull it out of the render path entirely
+  // and reference the constant directly from any hooks that need it. Keeps
+  // the react-hooks/exhaustive-deps linter honest.
+  const CHIP_SOUND_OFFSET_MS = useMemo(
+    () => Math.round(ANTE_CHIP_DURATION_MS * 0.58) - 50,
+    [],
+  );
   useEffect(() => {
     const rising = showDealing && !prevShowDealingRef.current;
     const falling = !showDealing && prevShowDealingRef.current;
@@ -709,7 +717,7 @@ export default function GameRoom({
         }, CHIP_SOUND_OFFSET_MS + i * ANTE_CHIP_STAGGER_MS),
       );
     }
-  }, [mySeatId]);
+  }, [mySeatId, CHIP_SOUND_OFFSET_MS]);
 
   const callAmount = Math.round(blindAmount / 2);
 
@@ -1013,7 +1021,7 @@ export default function GameRoom({
       );
     }, 800);
     return () => clearTimeout(id);
-  }, [showdown, seatHands, svaraSeatIds.size, seats]);
+  }, [showdown, seatHands, svaraSeatIds.size, seats, CHIP_SOUND_OFFSET_MS]);
 
   // Reveal the on-table SVARA splash ~1s after a tie is locked in so the
   // player has a beat to read everyone's cards (and notice the tied chips
@@ -1087,12 +1095,54 @@ export default function GameRoom({
     }
   }, [audio, room?.id, cardsOpened]);
 
+  // Map server `telegramId` → local seat id (1..6). Maintained from the
+  // raw `SvaraGameState` snapshots so incoming chat reactions can be
+  // attached to the correct seat without going through the adapter.
+  const playerToSeatIdRef = useRef<Map<string, number>>(new Map());
+  useEffect(() => {
+    const unsubscribe = subscribeToGameState((state) => {
+      const next = new Map<string, number>();
+      for (const player of state.players ?? []) {
+        if (typeof player.position !== 'number') continue;
+        const anchor = SEATID_TO_POS[String(player.position)];
+        if (!anchor) continue;
+        const localSeat = SEATS_DEFAULT.find((s) => s.pos === anchor);
+        if (!localSeat) continue;
+        next.set(String(player.id), localSeat.id);
+      }
+      playerToSeatIdRef.current = next;
+    });
+    return unsubscribe;
+  }, [SEATID_TO_POS]);
+
   const handleChatPick = useCallback(
     (item: ChatPickItem) => {
       showReaction(mySeatId, item);
+      if (room?.id !== undefined) {
+        sendChatMessage(String(room.id), item.value);
+      }
     },
-    [mySeatId, showReaction],
+    [mySeatId, room?.id, showReaction],
   );
+
+  // Render reactions from other players. The server broadcasts each chat
+  // message to the room (including the sender), so we filter out the local
+  // user to avoid double-firing the bubble that `handleChatPick` already
+  // showed locally.
+  useEffect(() => {
+    const unsubscribe = subscribeToChat(({ playerId, phrase }) => {
+      if (!playerId || !phrase) return;
+      const seatId = playerToSeatIdRef.current.get(String(playerId));
+      if (seatId == null) return;
+      if (seatId === mySeatId) return;
+      const isEmoji = Array.from(phrase).length <= 2 && /\p{Extended_Pictographic}/u.test(phrase);
+      const item: ChatPickItem = isEmoji
+        ? { kind: 'emoji', emojiId: phrase, value: phrase }
+        : { kind: 'text', value: phrase };
+      showReaction(seatId, item);
+    });
+    return unsubscribe;
+  }, [mySeatId, showReaction]);
 
   const handleSetThemePref = useCallback(
     (next: ThemePref) => {

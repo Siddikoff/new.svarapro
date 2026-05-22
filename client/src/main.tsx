@@ -5,7 +5,6 @@ import { createRoot } from 'react-dom/client';
 
 import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { attachStoreBridge, wsClient } from './websocket';
 
 try {
   const tg = typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp;
@@ -17,11 +16,12 @@ try {
   /* ignore */
 }
 
-// Wire the WebSocket bridge to the zustand stores. With no `VITE_WS_URL`
-// configured this is a no-op (connect() returns early); once the backend is
-// live the UI reacts to server pushes with zero extra glue in components.
-attachStoreBridge();
-wsClient.connect();
+// The svarapro backend exposes its realtime API over socket.io — see
+// `services/socket.ts` for the live client wiring. The previous raw-WebSocket
+// bridge from `src/websocket/` has been removed (it pointed at an endpoint
+// that doesn't exist on the server and would have collided with the socket.io
+// transport once `VITE_WS_URL` was set).
+
 
 const rootEl = document.getElementById('root');
 if (!rootEl) throw new Error('Root element #root not found');

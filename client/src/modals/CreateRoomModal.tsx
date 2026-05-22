@@ -29,7 +29,6 @@ const PRIVATE_PASSWORD_PATTERN = /^\d{6}$/;
 export function CreateRoomModal({ onClose, onBack, onCreate }: CreateRoomModalProps) {
   const { t } = useTranslation();
   const [bet, setBet] = useState('1');
-  const [maxPlayers, setMaxPlayers] = useState('6');
   const [isPrivate, setIsPrivate] = useState(false);
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -55,11 +54,9 @@ export function CreateRoomModal({ onClose, onBack, onCreate }: CreateRoomModalPr
         type: isPrivate ? 'private' : 'public',
         password: isPrivate ? password.trim() : undefined,
       });
-      // `maxPlayers` is a v143-only knob — the backend always allocates
-      // 6 seats. We keep the user's choice as a presentation cap so the
-      // lobby card matches their intent.
-      const cap = Number(maxPlayers) || 6;
-      onCreate?.({ ...room, max: Math.min(room.max, cap) });
+      // The backend always allocates 6 seats, so we surface the server's
+      // cap verbatim instead of letting the user pick a phantom value.
+      onCreate?.(room);
       onClose();
     } catch (error) {
       const message =
@@ -98,20 +95,7 @@ export function CreateRoomModal({ onClose, onBack, onCreate }: CreateRoomModalPr
           type="number"
         />
       </div>
-      <div className={styles.section}>
-        <div className={styles.sectionLabel}>{t('create_max_players_label')}</div>
-        <div className={styles.chipRowTight}>
-          {['2', '3', '4', '5', '6'].map((value) => (
-            <button
-              key={value}
-              onClick={() => setMaxPlayers(value)}
-              className={`${styles.chipLg} ${maxPlayers === value ? styles.chipActive : ''}`}
-            >
-              {value}
-            </button>
-          ))}
-        </div>
-      </div>
+
       <div
         className={`${styles.privateRow} ${
           isPrivate ? styles.privateRowExpanded : styles.privateRowCollapsed

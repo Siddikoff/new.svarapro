@@ -214,7 +214,11 @@ describe('gameSocket bridge', () => {
         event: 'sit_down',
         payload: { roomId: '1', position: 2, userData: { username: 'me', avatar: '' } },
       },
+      // `subscribe_balance` is the GameGateway's per-socket subscription; `join`
+      // is the TransactionGateway's per-user room join — both are required so
+      // `balanceUpdated` and `transactionConfirmed` push events actually arrive.
       { event: 'subscribe_balance', payload: undefined },
+      { event: 'join', payload: '111' },
     ]);
   });
 });

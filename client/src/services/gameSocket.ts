@@ -34,6 +34,7 @@ import type {
   SvaraServerErrorEvent,
   SvaraSitDownRequest,
 } from '../api/svaraGame';
+import { useAuthStore } from '../store/authStore';
 import { useGameStore } from '../store/gameStore';
 import { useToastStore } from '../store/toastStore';
 import { emitSocketEvent, onSocketEvent } from './socket';
@@ -46,7 +47,10 @@ const SVARA_EVENTS = {
   NEW_CHAT_MESSAGE: 'new_chat_message',
   PLAY_SOUND: 'play_sound',
   ERROR: 'error',
+  BALANCE_UPDATED: 'balanceUpdated',
+  TRANSACTION_CONFIRMED: 'transactionConfirmed',
 
+  JOIN: 'join',
   JOIN_ROOM: 'join_room',
   LEAVE_ROOM: 'leave_room',
   SIT_DOWN: 'sit_down',
@@ -54,6 +58,17 @@ const SVARA_EVENTS = {
   CHAT_MESSAGE: 'chat_message',
   SUBSCRIBE_BALANCE: 'subscribe_balance',
 } as const;
+
+export interface SvaraBalanceUpdatedEvent {
+  balance: number | string;
+}
+
+export interface SvaraTransactionConfirmedEvent {
+  balance: number | string;
+  amount: number;
+  currency: string;
+  message?: string;
+}
 
 /**
  * Local monotonically increasing version counter — the svarapro server
@@ -99,6 +114,32 @@ const handleError = (event: SvaraServerErrorEvent): void => {
   });
 };
 
+const handleBalanceUpdated = (event: SvaraBalanceUpdatedEvent): void => {
+  const next = Number(event?.balance);
+  if (!Number.isFinite(next)) return;
+  useAuthStore.setState((state) => ({
+    user: { ...state.user, balance: next },
+  }));
+};
+
+const handleTransactionConfirmed = (
+  event: SvaraTransactionConfirmedEvent,
+): void => {
+  const next = Number(event?.balance);
+  if (Number.isFinite(next)) {
+    useAuthStore.setState((state) => ({
+      user: { ...state.user, balance: next },
+    }));
+  }
+  const text = event?.message ?? `+ ${event?.amount ?? ''} ${event?.currency ?? ''}`.trim();
+  if (text) {
+    useToastStore.getState().pushToast({
+      tone: 'success',
+      message: text,
+    });
+  }
+};
+
 /**
  * Attach inbound listeners. Returns a detacher that unsubscribes every
  * handler. Call once on app boot (the listeners are no-ops while the
@@ -114,6 +155,14 @@ export const attachGameSocketBridge = (): (() => void) => {
     ),
     onSocketEvent<string>(SVARA_EVENTS.PLAY_SOUND, handlePlaySound),
     onSocketEvent<SvaraServerErrorEvent>(SVARA_EVENTS.ERROR, handleError),
+    onSocketEvent<SvaraBalanceUpdatedEvent>(
+      SVARA_EVENTS.BALANCE_UPDATED,
+      handleBalanceUpdated,
+    ),
+    onSocketEvent<SvaraTransactionConfirmedEvent>(
+      SVARA_EVENTS.TRANSACTION_CONFIRMED,
+      handleTransactionConfirmed,
+    ),
   ];
   return () => {
     for (const off of offs) off();
@@ -148,7 +197,16 @@ export const sendChatMessage = (roomId: string, phrase: string): void => {
 };
 
 export const subscribeToBalanceUpdates = (): void => {
+  // `subscribe_balance` is the GameGateway's per-socket subscription request
+  // (reads telegramId from handshake.auth). `join` is the TransactionGateway's
+  // separate `client.join(userId)` call — without it `server.to(userId).emit(
+  // 'transactionConfirmed', …)` never reaches us. Both gateways live on the
+  // same socket connection, so we emit both on bootstrap.
   emitSocketEvent(SVARA_EVENTS.SUBSCRIBE_BALANCE);
+  const tgId = getTelegramUserId();
+  if (tgId !== null) {
+    emitSocketEvent(SVARA_EVENTS.JOIN, String(tgId));
+  }
 };
 
 /**

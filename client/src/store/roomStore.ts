@@ -117,16 +117,44 @@ export const useRoomStore = create<RoomStoreState>((set, get) => ({
  * `RoomsGateway`. Idempotent — `onSocketEvent` returns a teardown which
  * we ignore (the lobby listens for the entire app lifetime).
  *
- * The server emits `{ action: 'initial' | 'update', rooms: ServerRoom[] }`;
- * we filter privates (their password is the room id) and map to the
- * client shape so existing components keep working.
+ * The server emits two channels:
+ *   - `rooms`         — `{ action: 'initial' | 'update', rooms: ServerRoom[] }`
+ *                       fired on connect and whenever the room list changes
+ *                       on the gateway side.
+ *   - `rooms_updated` — bare `ServerRoom[]` broadcast by
+ *                       `GameGateway.handleLeaveRoom` after a player exits
+ *                       a room. Without subscribing here the lobby misses
+ *                       the post-leave update until the next REST poll.
+ *
+ * Both feed the same store slice; we filter privates (their password is
+ * the room id) and map to the client shape so existing components keep
+ * working.
  */
+type RoomsUpdatedFrame =
+  | Array<Parameters<typeof mapServerRoomToClient>[0]>
+  | RoomsSocketFrame;
+
+const applyRoomsPayload = (
+  rooms: Array<Parameters<typeof mapServerRoomToClient>[0]>,
+): void => {
+  const mapped = rooms
+    .filter((room) => room.type === 'public' || room.isSystem)
+    .map(mapServerRoomToClient);
+  useRoomStore.setState({ rooms: mapped });
+};
+
 export const subscribeRoomSocket = (): void => {
   onSocketEvent<RoomsSocketFrame>('rooms', (frame) => {
     if (!frame || !Array.isArray(frame.rooms)) return;
-    const rooms = frame.rooms
-      .filter((room) => room.type === 'public' || room.isSystem)
-      .map(mapServerRoomToClient);
-    useRoomStore.setState({ rooms });
+    applyRoomsPayload(frame.rooms);
+  });
+  onSocketEvent<RoomsUpdatedFrame>('rooms_updated', (frame) => {
+    if (Array.isArray(frame)) {
+      applyRoomsPayload(frame);
+      return;
+    }
+    if (frame && Array.isArray(frame.rooms)) {
+      applyRoomsPayload(frame.rooms);
+    }
   });
 };

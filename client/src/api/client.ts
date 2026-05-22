@@ -27,11 +27,45 @@ import { validateApiResponse } from '../shared/protocol';
 
 const BASE_URL: string = import.meta.env?.VITE_API_BASE_URL ?? '';
 
-let authToken: string | null = null;
+/**
+ * The JWT lives in `localStorage` so it survives full page reloads and
+ * Telegram's "back to chat → reopen" flow. Without persistence, every
+ * reload would replay the `initData` → `/auth/login` round-trip, which
+ * Telegram rate-limits and which fails silently in dev preview where
+ * `initData` is empty. The runtime cache below is a hot path so we don't
+ * touch `localStorage` on every request.
+ */
+const AUTH_TOKEN_STORAGE_KEY = 'svarapro:authToken';
+
+const readStoredToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage?.getItem(AUTH_TOKEN_STORAGE_KEY) ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const writeStoredToken = (token: string | null): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (token) {
+      window.localStorage?.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+    } else {
+      window.localStorage?.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    }
+  } catch {
+    // Storage may be unavailable (Safari private mode, etc.) — fall back to
+    // in-memory only.
+  }
+};
+
+let authToken: string | null = readStoredToken();
 
 /** Set / clear the JWT used by subsequent requests. */
 export const setAuthToken = (token: string | null): void => {
   authToken = token;
+  writeStoredToken(token);
 };
 
 /** Current JWT (mainly for the socket layer to forward in `auth`). */
