@@ -47,6 +47,7 @@ import styles from './GameRoom.module.css';
 import { sendGameAction } from './services/gameSocket';
 import { hapticTap } from './services/haptics';
 import { getTelegramWebApp, shareToTelegram } from './services/telegram';
+import { useAuthStore } from './store/authStore';
 import { useGameStore } from './store/gameStore';
 
 type Theme = 'light' | 'dark';
@@ -154,6 +155,56 @@ export default function GameRoom({
     }
   }, []);
 
+  // Real local-user profile (Telegram-authenticated). Painted onto the
+  // me-seat so the bottom nameplate shows the actual logged-in player
+  // instead of the positional placeholder from `SEATS_DEFAULT`.
+  const authUser = useAuthStore((state) => state.user);
+  const realSeats = useGameStore((state) => state.seats);
+
+  const mySeatOverlay = useMemo(() => {
+    if (!authUser) return null;
+    const name =
+      authUser.username && authUser.username.trim()
+        ? authUser.username
+        : authUser.name && authUser.name.trim()
+          ? authUser.name
+          : 'Player';
+    return {
+      name,
+      stack: `$${authUser.balance.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+      photo: typeof authUser.photo === 'string' && authUser.photo ? authUser.photo : 7,
+    };
+  }, [authUser]);
+
+  // Map server seat snapshots (keyed by canonical `seatId` 0..N-1) onto
+  // the table positions. Seat 0 = my position (`bottom`); seats 1..5 go
+  // clockwise around the felt. This lives in GameRoom rather than the
+  // hook so the hook stays pure / testable.
+  const SEATID_TO_POS: Record<string, SeatAnchorPos> = useMemo(
+    () => ({
+      '0': 'bottom',
+      '1': 'right-down',
+      '2': 'right-up',
+      '3': 'top',
+      '4': 'left-up',
+      '5': 'left-down',
+    }),
+    [],
+  );
+  const otherSeatsOverlay = useMemo(() => {
+    const map: Partial<Record<SeatAnchorPos, { name?: string; stack?: string; photo?: string | number }>> = {};
+    for (const [seatId, seat] of Object.entries(realSeats ?? {})) {
+      const pos = SEATID_TO_POS[seatId];
+      if (!pos || pos === 'bottom') continue;
+      map[pos] = {
+        name: seat.name,
+        stack: typeof seat.stack === 'number' ? `$${seat.stack}` : seat.stack,
+        photo: seat.photo,
+      };
+    }
+    return map;
+  }, [realSeats, SEATID_TO_POS]);
+
   const {
     seats,
     getDisplayPos,
@@ -162,7 +213,14 @@ export default function GameRoom({
     aloneInRoom,
     showDealing,
     handleTakeSeat,
-  } = useSeatRotation({ room, spectator, waitForNextRound, onTakeSeat });
+  } = useSeatRotation({
+    room,
+    spectator,
+    waitForNextRound,
+    onTakeSeat,
+    mySeat: mySeatOverlay,
+    otherSeats: otherSeatsOverlay,
+  });
 
   const settings = useGameSettings();
   const t = getThemeColors(theme);

@@ -120,28 +120,16 @@ export interface SeatDefinition {
   activeBet?: SeatActiveBet;
 }
 
+// Positional placeholders only — no fake usernames/balances. Real player
+// data (me-seat + other seats) is overlaid in GameRoom from authStore and
+// the WebSocket-driven game store.
 export const SEATS_DEFAULT: SeatDefinition[] = [
-  { id: 1, name: 'AlbertSton', stack: '$13.9K', photo: 1, pos: 'top' },
-  { id: 2, name: 'AlbertSton', stack: '$13.9K', photo: 12, pos: 'left-up' },
-  { id: 3, name: 'AlbertSton', stack: '$13.9K', photo: 33, pos: 'right-up', dealer: true },
-  { id: 4, name: 'AlbertSton', stack: '$13.9K', photo: 13, pos: 'left-down' },
-  {
-    id: 5,
-    name: 'AlbertSton',
-    stack: '$13.9K',
-    photo: 8,
-    pos: 'right-down',
-    activeBet: { label: 'ВСЛЕПУЮ', amount: 10 },
-  },
-  {
-    id: 6,
-    name: 'Msiddikoff',
-    stack: '$13.9K',
-    photo: 7,
-    pos: 'bottom',
-    me: true,
-    timer: 0.55,
-  },
+  { id: 1, name: '', stack: '', photo: 1, pos: 'top' },
+  { id: 2, name: '', stack: '', photo: 12, pos: 'left-up' },
+  { id: 3, name: '', stack: '', photo: 33, pos: 'right-up' },
+  { id: 4, name: '', stack: '', photo: 13, pos: 'left-down' },
+  { id: 5, name: '', stack: '', photo: 8, pos: 'right-down' },
+  { id: 6, name: '', stack: '', photo: 7, pos: 'bottom', me: true },
 ];
 
 export const AVATAR = 58;

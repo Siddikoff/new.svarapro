@@ -18,7 +18,12 @@ export interface RotationSeat {
   pos: SeatAnchorPos;
   name?: string;
   stack?: string | number;
-  photo?: number;
+  /**
+   * Either a numeric pravatar.cc seed (legacy stand-in avatars) or a full
+   * URL string for real Telegram/CDN-hosted avatars. The Avatar component
+   * detects URL strings and renders them directly.
+   */
+  photo?: number | string;
   dealer?: boolean;
   me?: boolean;
   empty?: boolean;
@@ -27,11 +32,29 @@ export interface RotationSeat {
   [key: string]: unknown;
 }
 
+/**
+ * Overrides used to paint REAL player data over the positional placeholders
+ * defined in `SEATS_DEFAULT`. Without these, the table would show nameless
+ * stand-ins. `mySeat` is the locally authenticated user; `otherSeats` is
+ * keyed by seat position (`'top'`, `'left-up'`, …) so the seat-rotation
+ * machine can overlay each seat regardless of its current rotated id.
+ */
+export interface SeatOverlayData {
+  name?: string;
+  stack?: string | number;
+  photo?: string | number;
+  empty?: boolean;
+}
+
 export interface UseSeatRotationOptions {
   room: { id?: string | number; max?: number; players?: number } | null | undefined;
   spectator: boolean;
   waitForNextRound: boolean;
   onTakeSeat?: (seat: RotationSeat | { pos: SeatAnchorPos } | null) => void;
+  /** Real local-user profile painted onto the me-seat (bottom by default). */
+  mySeat?: SeatOverlayData | null;
+  /** Real other-player snapshots keyed by canonical position. */
+  otherSeats?: Partial<Record<SeatAnchorPos, SeatOverlayData>>;
 }
 
 export interface UseSeatRotationResult {
@@ -54,6 +77,8 @@ export function useSeatRotation({
   spectator,
   waitForNextRound,
   onTakeSeat,
+  mySeat,
+  otherSeats,
 }: UseSeatRotationOptions): UseSeatRotationResult {
   const [chosenPos, setChosenPos] = useState<SeatAnchorPos | null>(null);
   const [joinedMidDeal, setJoinedMidDeal] = useState<boolean>(false);
@@ -121,9 +146,12 @@ export function useSeatRotation({
     if (aloneInRoom) {
       return new Set(positions.filter((s) => !s.me).map((s) => s.pos));
     }
+    // No `Math.max(1, …)` floor: when a room is genuinely empty (0 players)
+    // we want every seat to render as empty rather than forcing the first
+    // positional placeholder to look occupied.
     const filledCount = Math.min(
       positions.length,
-      Math.max(1, typeof room?.players === 'number' ? room.players : positions.length),
+      Math.max(0, typeof room?.players === 'number' ? room.players : positions.length),
     );
     const set = new Set<SeatAnchorPos>();
     let need = positions.length - filledCount;
@@ -175,13 +203,41 @@ export function useSeatRotation({
     }
 
     return working.map((s) => {
-      if (s.me) return s;
+      if (s.me) {
+        // Spectator with no committed seat hides the me-tag; otherwise paint
+        // the local-user overlay onto the bottom (or chosen) seat.
+        if (!mySeat) return s;
+        return {
+          ...s,
+          ...(mySeat.name != null ? { name: mySeat.name } : {}),
+          ...(mySeat.stack != null ? { stack: mySeat.stack } : {}),
+          ...(mySeat.photo != null ? { photo: mySeat.photo } : {}),
+        };
+      }
       if (emptyPositionsBase.has(s.pos) && s.pos !== chosenPos) {
         return { id: s.id, pos: s.pos, empty: true };
       }
-      return s;
+      const overlay = otherSeats?.[s.pos];
+      if (overlay?.empty) {
+        return { id: s.id, pos: s.pos, empty: true };
+      }
+      if (otherSeats && !overlay) {
+        // Caller opted into real-player overlays (passed `otherSeats`), but
+        // no snapshot exists for this position — render the seat as empty
+        // so the placeholder name/stack from `SEATS_DEFAULT` never leaks
+        // onto the felt. When `otherSeats` is `undefined` we fall through
+        // to the default-seat data (used by unit tests + mock mode).
+        return { id: s.id, pos: s.pos, empty: true };
+      }
+      if (!overlay) return s;
+      return {
+        ...s,
+        ...(overlay.name != null ? { name: overlay.name } : {}),
+        ...(overlay.stack != null ? { stack: overlay.stack } : {}),
+        ...(overlay.photo != null ? { photo: overlay.photo } : {}),
+      };
     });
-  }, [spectator, chosenPos, joinedMidDeal, baseSeats, emptyPositionsBase]);
+  }, [spectator, chosenPos, joinedMidDeal, baseSeats, emptyPositionsBase, mySeat, otherSeats]);
 
   useEffect(() => {
     if (waitForNextRound || aloneInRoom) {
