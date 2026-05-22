@@ -24,6 +24,17 @@ export type GamePhase = z.infer<typeof GamePhaseSchema>;
  */
 export const SeatStateSchema = z.object({
   seatId: SeatIdSchema,
+  /**
+   * Backend identity of the player occupying this seat (Telegram user id as
+   * a string for the svarapro backend). Optional because mock / test
+   * snapshots may omit it; real wire frames always include it.
+   *
+   * GameRoom uses this to identify which seat is the local player without
+   * relying on the seat's position number — that lets the table rotate so
+   * the local user always sits at the bottom regardless of the server-side
+   * `position` they were assigned.
+   */
+  telegramId: z.string().optional(),
   stack: MoneySchema.optional(),
   bet: MoneySchema.optional(),
   /** Profile photo index (matches `assets/avatars/<n>.png`). */

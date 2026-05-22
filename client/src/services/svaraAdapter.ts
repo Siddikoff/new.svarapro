@@ -77,6 +77,7 @@ export const adaptPlayerToSeat = (
   const reveal = opts.showdown || player.id === opts.selfTelegramId;
   const seat: SeatState = {
     seatId: seatIdFromPosition(player.position),
+    telegramId: player.id,
     name: player.username,
     photo: player.avatar ?? undefined,
     stack: player.tableBalance,

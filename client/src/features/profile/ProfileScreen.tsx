@@ -27,8 +27,33 @@ import {
 import css from './Profile.module.css';
 import { buildChevronUrl } from './profileData';
 import { AgreementSheet } from './sheets/AgreementSheet';
+import { GameRulesSheet } from './sheets/GameRulesSheet';
 import { PartnerSheet } from './sheets/PartnerSheet';
 import { WalletSheet } from './sheets/WalletSheet';
+
+const NEWS_CHANNEL_URL = 'https://t.me/SvaraPro';
+const SUPPORT_CHAT_URL = 'https://t.me/SvaraProSupportbot';
+
+const openTelegramExternal = (url: string): void => {
+  if (typeof window === 'undefined') return;
+  const tg = window.Telegram?.WebApp;
+  // Prefer the Telegram WebApp helper so the link opens inside the
+  // Telegram client (correct UX for a mini-app). Fall back to a regular
+  // window.open when the helper isn't available (preview in a browser).
+  if (tg?.openTelegramLink) {
+    try {
+      tg.openTelegramLink(url);
+      return;
+    } catch {
+      // ignore — fall through to window.open
+    }
+  }
+  try {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch {
+    // ignore
+  }
+};
 
 /**
  * Profile screen orchestrator.
@@ -79,6 +104,7 @@ export function ProfileScreen({
   const [walletSheetOpen, setWalletSheetOpen] = useState(false);
   const [partnerOpen, setPartnerOpen] = useState(false);
   const [agreementOpen, setAgreementOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
 
   const transactions = useProfileStore((s) => s.transactions);
   const transactionsStatus = useProfileStore((s) => s.transactionsStatus);
@@ -156,7 +182,7 @@ export function ProfileScreen({
         icon: <NewsMenuIcon />,
         bg: COLORS.tintRed,
         label: t('news_channel'),
-        onClick: () => {},
+        onClick: () => openTelegramExternal(NEWS_CHANNEL_URL),
       },
       {
         icon: <AgreementMenuIcon />,
@@ -168,13 +194,13 @@ export function ProfileScreen({
         icon: <HowToPlayMenuIcon />,
         bg: COLORS.tintGold,
         label: t('how_to_play'),
-        onClick: () => {},
+        onClick: () => setRulesOpen(true),
       },
       {
         icon: <SupportMenuIcon />,
         bg: COLORS.tintBlue,
         label: t('support_chat'),
-        onClick: () => {},
+        onClick: () => openTelegramExternal(SUPPORT_CHAT_URL),
       },
     ],
     [t, historyLabel],
@@ -242,6 +268,7 @@ export function ProfileScreen({
           />
         )}
         {agreementOpen && <AgreementSheet onClose={() => setAgreementOpen(false)} />}
+        {rulesOpen && <GameRulesSheet onClose={() => setRulesOpen(false)} />}
       </div>
     </div>
   );
