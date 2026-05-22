@@ -1,0 +1,42 @@
+/* AnteOverlay — at the start of every deal each occupied seat tosses a
+ * red poker chip toward the pot. Chips land in a small pile just under the
+ * «Банк …» readout.
+ *
+ * Animation is driven by the Web Animations API in AnteOverlay.tsx and is
+ * transform-only (translate3d + scale + opacity) so every frame stays on
+ * the compositor — no layout / no paint per frame → stable 60+ fps even
+ * on weaker Android Telegram WebViews. CSS here only sets up the static
+ * paint of each chip; the per-chip start/end positions and motion are
+ * computed in JS based on the actual rendered nameplate position. */
+
+.layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 7;
+}
+
+/* Red casino chip — rendered as inline SVG inside the span so the white edge
+ * notches stay crisp at any size (CSS conic-gradient anti-aliases them away on
+ * the tiny ante chips). The span only positions and sizes the chip; the WAAPI
+ * animation set up in AnteOverlay.tsx drives `transform` + `opacity` from a
+ * negative-offset start back to identity (resting at the pile). */
+.chip {
+  position: absolute;
+  /* `top`/`left` are overwritten in JS to the chip's resting (destination)
+   * position so the animation only has to interpolate `transform`. */
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.55));
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.chip svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

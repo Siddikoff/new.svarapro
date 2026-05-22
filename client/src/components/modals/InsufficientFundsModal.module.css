@@ -1,0 +1,62 @@
+/* InsufficientFundsModal — static styles extracted from inline. */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.iconWrap {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--tint-red);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.message {
+  font-size: 14px;
+  color: var(--hint);
+  margin-bottom: 20px;
+  line-height: 1.45;
+  max-width: 320px;
+}
+
+.strong {
+  color: var(--text);
+}
+
+.primaryBtn {
+  width: 100%;
+  padding: 13px 0;
+  background: var(--tint-blue);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.ghostBtn {
+  width: 100%;
+  padding: 11px 0;
+  background: transparent;
+  color: var(--hint);
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}

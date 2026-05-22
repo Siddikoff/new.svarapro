@@ -1,0 +1,208 @@
+/* DepositModal — shared step styles.
+ * One class per logical block. Theme tokens live in `index.html`. */
+
+.stepTitle {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+.stepSubtitle {
+  font-size: 13px;
+  color: var(--hint);
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.fieldLabel {
+  font-size: 13px;
+  color: var(--hint);
+  margin-bottom: 8px;
+}
+
+.methodHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.backButton {
+  background: var(--input);
+  border: none;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.methodTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.methodTitleCenter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.warningRow {
+  background: var(--input);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.warningIcon {
+  font-size: 22px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.warningBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.warningTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.warningSub {
+  font-size: 13px;
+  color: var(--hint);
+  line-height: 1.4;
+}
+
+.amountRow {
+  background: var(--input);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.amountValue {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.amountValueLarge {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.3px;
+}
+
+.amountConvert {
+  font-size: 12px;
+  color: var(--hint);
+}
+
+.copyRow {
+  background: var(--input);
+  border: 1.5px solid var(--div);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--text);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.copyValueMono {
+  word-break: break-all;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.copyValueCard {
+  font-family: ui-monospace, monospace;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.copyButton {
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  background: var(--bg3);
+  color: var(--text);
+  font-family: inherit;
+}
+
+.copyButtonActive {
+  background: var(--tint-success);
+  color: var(--green, #4dcd5e);
+}
+
+.recipient {
+  background: var(--input);
+  border: 1.5px solid var(--div);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.2px;
+  margin-bottom: 14px;
+}
+
+.cancelButton {
+  width: 100%;
+  margin-top: 10px;
+  background: transparent;
+  border: none;
+  color: var(--hint);
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #4dcd5e;
+  color: #fff;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 999;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: calc(100vw - 24px);
+}

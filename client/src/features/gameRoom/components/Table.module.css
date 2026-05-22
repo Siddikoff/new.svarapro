@@ -1,0 +1,163 @@
+/* Table — static visual layer for the felt table. */
+
+.floorShadow {
+  position: absolute;
+  bottom: -20px;
+  left: 12%;
+  right: 12%;
+  height: 40px;
+  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.82) 0%, transparent 70%);
+  filter: blur(18px);
+  z-index: 0;
+}
+
+.topShadow {
+  position: absolute;
+  top: -20px;
+  left: 12%;
+  right: 12%;
+  height: 40px;
+  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.82) 0%, transparent 70%);
+  filter: blur(18px);
+  z-index: 0;
+}
+
+.outerRail {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  box-shadow:
+    0 28px 72px rgba(0, 0, 0, 0.92),
+    0 8px 24px rgba(0, 0, 0, 0.65),
+    inset 0 5px 14px rgba(0, 0, 0, 0.8),
+    inset 0 -5px 14px rgba(0, 0, 0, 0.8),
+    inset 8px 0 18px rgba(0, 0, 0, 0.6),
+    inset -8px 0 18px rgba(0, 0, 0, 0.6);
+  z-index: 1;
+}
+
+.railGloss {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(175deg, rgba(255, 255, 255, 0.03) 0%, transparent 20%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.innerBevel {
+  position: absolute;
+  inset: 14px;
+  border-radius: 999px;
+  background: #0e0e10;
+  box-shadow:
+    inset 0 5px 20px rgba(0, 0, 0, 1),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.8);
+  z-index: 3;
+}
+
+.felt {
+  position: absolute;
+  inset: 20px;
+  border-radius: 999px;
+  box-shadow:
+    inset 0 10px 40px rgba(0, 0, 0, 0.35),
+    inset 0 -10px 40px rgba(0, 0, 0, 0.35),
+    inset 30px 0 50px rgba(0, 0, 0, 0.18),
+    inset -30px 0 50px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  z-index: 4;
+}
+
+.velvetTexture {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.025) 0px,
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    repeating-linear-gradient(
+      45deg,
+      rgba(0, 0, 0, 0.03) 0px,
+      rgba(0, 0, 0, 0.03) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+}
+
+.lampBloom {
+  position: absolute;
+  top: 5%;
+  left: 15%;
+  right: 15%;
+  height: 45%;
+  background: radial-gradient(
+    ellipse at 50% 20%,
+    rgba(200, 255, 175, 0.04) 0%,
+    rgba(120, 200, 90, 0.02) 35%,
+    transparent 65%
+  );
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.vignetteLeft {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 0% 50%, rgba(0, 0, 0, 0.22) 0%, transparent 48%);
+  pointer-events: none;
+}
+
+.vignetteRight {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 100% 50%, rgba(0, 0, 0, 0.22) 0%, transparent 48%);
+  pointer-events: none;
+}
+
+.decorRing {
+  position: absolute;
+  inset: 40px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+}
+
+.watermark {
+  position: absolute;
+  left: 50%;
+  bottom: 22%;
+  transform: translateX(-50%);
+  font-size: 16px;
+  font-weight: 500;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', 'Roboto Mono', ui-monospace, monospace;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.07);
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Showdown dim — translucent black wash over the felt that fades in once
+ * every seat flips face-up. Lives inside `.felt` so it inherits the pill
+ * clip and stays bounded to the table area; the felt itself owns a
+ * stacking context at z-index 4, while seats (z=10), pot (z=5), cards
+ * (z=6/7) and chip overlays (z=7+) sit above that context and therefore
+ * keep full brightness. */
+.dimOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.32);
+  opacity: 0;
+  transition: opacity 320ms ease-out;
+  pointer-events: none;
+}
+
+.dimOverlayActive {
+  opacity: 1;
+}

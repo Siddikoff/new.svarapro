@@ -1,14 +1,213 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="ru">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>Svara Pro</title>
-    <!-- Подключение Telegram WebApp скрипта -->
-    <script src="https://telegram.org/js/telegram-web-app.js?57"></script>
+    <meta charset="utf-8" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#17212b" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Свара — турниры</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Russo+One&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%232481cc'/><text x='32' y='44' font-size='36' font-family='Georgia,serif' font-weight='800' fill='white' text-anchor='middle'>A%E2%99%A0</text></svg>"
+    />
+    <style>
+      /* Brand colors — same in every theme. Declared on :root so they
+       * cascade to the whole document regardless of the active
+       * [data-theme]. Without these, CSS-module references like
+       * `border-color: var(--accent)` fell back to `currentColor`
+       * (e.g. white on active chips) instead of brand blue. */
+      :root {
+        --accent: #2481cc;
+        --gold: #f5a623;
+        --green: #4dcd5e;
+        --surface: var(--bg2);
+      }
+      :root,
+      body[data-theme='dark'] {
+        --bg: #17212b;
+        --bg2: #232e3c;
+        --bg3: #2b5278;
+        --text: #ffffff;
+        --hint: #708499;
+        --div: #2a3a4a;
+        --input: #17212b;
+        --shadow: rgba(0, 0, 0, 0.3);
+        --tint-blue: #1e3a5f;
+        --tint-green: #1a3a2e;
+        --tint-gold: #3a2e10;
+        --tint-red: #3a1f1a;
+        --tint-purple: #261e3a;
+        --tint-success: #1a3a2a;
+        --toggle-off: #2a3a4a;
+      }
+      body[data-theme='light'] {
+        --bg: #f1f4f8;
+        --bg2: #ffffff;
+        --bg3: #d6e7f4;
+        --text: #1a2533;
+        --hint: #6b7d8e;
+        --div: #e1e8ed;
+        --input: #f1f4f8;
+        --shadow: rgba(20, 32, 51, 0.08);
+        --tint-blue: #e3f0fb;
+        --tint-green: #e1f5ec;
+        --tint-gold: #fdf2dc;
+        --tint-red: #fbe8e3;
+        --tint-purple: #ece5fb;
+        --tint-success: #e1f5ec;
+        --toggle-off: #c4ccd6;
+      }
+      body[data-theme='dark'][data-theme-variant='oled'] {
+        --bg: #000000;
+        --bg2: #1c1c1e;
+        --bg3: #3a3a3c;
+        --text: #ffffff;
+        --hint: #8e8e93;
+        --div: #2c2c2e;
+        --input: #2c2c2e;
+        --shadow: rgba(0, 0, 0, 0.6);
+        --tint-blue: #0f2a4a;
+        --tint-green: #0f3326;
+        --tint-gold: #3a2c10;
+        --tint-red: #3a1a14;
+        --tint-purple: #221a36;
+        --tint-success: #0f3326;
+        --toggle-off: #2c2c2e;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+      }
+      html,
+      body {
+        background: var(--bg);
+        color: var(--text);
+        height: 100%;
+        transition: background-color 0.2s ease, color 0.2s ease;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'SF Pro Display',
+          system-ui, 'Helvetica Neue', Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+        overscroll-behavior-y: contain;
+      }
+      input,
+      textarea,
+      [contenteditable='true'] {
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+        user-select: text;
+        -webkit-touch-callout: default;
+      }
+      button {
+        font-family: inherit;
+      }
+      ::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+      }
+      input::-moz-placeholder, textarea::-moz-placeholder {
+        color: var(--hint);
+        opacity: 1;
+      }
+      input::placeholder,
+      textarea::placeholder {
+        color: var(--hint);
+        opacity: 1;
+      }
+      input::-webkit-input-placeholder,
+      textarea::-webkit-input-placeholder {
+        color: var(--hint);
+        opacity: 1;
+      }
+      #svrLandscapeBlock {
+        display: none;
+      }
+      @media screen and (orientation: landscape) and (max-height: 500px) {
+        #root {
+          display: none !important;
+        }
+        #svrLandscapeBlock {
+          display: flex !important;
+          position: fixed;
+          inset: 0;
+          background: var(--bg);
+          color: var(--text);
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 18px;
+          padding: 24px;
+          text-align: center;
+          z-index: 99999;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+        }
+        #svrLandscapeBlock .ico {
+          width: 64px;
+          height: 64px;
+          color: var(--hint);
+          animation: svrRotateHint 2.4s ease-in-out infinite;
+        }
+        #svrLandscapeBlock .t1 {
+          font-size: 17px;
+          font-weight: 700;
+        }
+        #svrLandscapeBlock .t2 {
+          font-size: 13px;
+          color: var(--hint);
+          max-width: 280px;
+          line-height: 1.4;
+        }
+      }
+      @keyframes svrRotateHint {
+        0%, 100% { transform: rotate(-90deg); }
+        45%, 55% { transform: rotate(0deg); }
+      }
+    </style>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
-  <body>
+  <body data-theme="dark">
     <div id="root"></div>
+    <div id="svrLandscapeBlock">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="7" y="2" width="10" height="20" rx="2"></rect>
+        <line x1="11" y1="18" x2="13" y2="18"></line>
+      </svg>
+      <div class="t1">Поверните телефон</div>
+      <div class="t2">Приложение работает только в вертикальной ориентации</div>
+    </div>
+    <script>
+      (function () {
+        try {
+          if (screen && screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock('portrait').catch(function () {});
+          }
+        } catch (e) {}
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

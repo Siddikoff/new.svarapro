@@ -1,0 +1,170 @@
+/* Chat — static styles extracted from inline. */
+
+.lottieRoot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lottieFallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: opacity 0.2s linear;
+  font-family:
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', EmojiOne, Twemoji Mozilla, sans-serif;
+}
+
+.lottieOverlay {
+  position: relative;
+  z-index: 1;
+}
+
+.phraseBtn {
+  position: relative;
+  border-radius: 14px;
+  padding: 10px 8px 11px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  white-space: pre-wrap;
+  line-height: 1.15;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.chatBtn {
+  position: absolute;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 5;
+  padding: 0;
+}
+
+.chatBtnSvg {
+  display: block;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+  z-index: 50;
+}
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 78vh;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  padding: 8px 14px max(env(safe-area-inset-bottom), 14px);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.45);
+  z-index: 51;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  will-change: transform;
+  transform: translateZ(0);
+  contain: layout paint;
+}
+
+.grabber {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  margin: 6px auto 10px;
+}
+
+.tabRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 2px 4px 0;
+}
+
+.tabBtn {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 12px;
+  border: none;
+  font-weight: 700;
+  font-size: 13.5px;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+}
+
+.tabStack {
+  display: grid;
+}
+
+.tabPane {
+  grid-area: 1 / 1;
+}
+
+.phrasesGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px 8px;
+  padding: 4px 4px 10px;
+}
+
+.emojisGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 8px;
+  padding: 4px 4px 12px;
+}
+
+.emojiBtn {
+  padding: 0;
+  border-radius: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  transition:
+    transform 0.12s ease,
+    background 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.emojiChar {
+  font-size: 30px;
+  line-height: 1;
+  font-family:
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', EmojiOne, 'Twemoji Mozilla',
+    sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+}

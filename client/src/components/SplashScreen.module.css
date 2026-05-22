@@ -1,0 +1,172 @@
+/* SplashScreen — static styles extracted from inline. */
+
+.heroBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.heroTitle {
+  font-family: 'Russo One', 'Segoe UI', system-ui, sans-serif;
+  font-weight: 400;
+  font-size: 38px;
+  letter-spacing: 4px;
+  line-height: 1;
+  background: linear-gradient(
+    90deg,
+    #c98f3a 0%,
+    #f5d97a 30%,
+    #ffffff 50%,
+    #f5d97a 70%,
+    #c98f3a 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation:
+    svrSpHero 0.7s cubic-bezier(0.22, 0.94, 0.36, 1) 0s both,
+    svrSpShine 2.6s ease-in-out 0.7s infinite;
+}
+
+.heroSubtitle {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--hint);
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  font-family: 'Russo One', 'Segoe UI', system-ui, sans-serif;
+  animation: svrSpFadeUp 0.55s ease-out 0.55s both;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  transform: translateY(-12%);
+}
+
+.contentExiting {
+  animation: svrSpExit 0.55s cubic-bezier(0.22, 0.94, 0.36, 1) both;
+}
+
+.cardsRow {
+  position: relative;
+  width: 220px;
+  height: 130px;
+  perspective: 600px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.card {
+  position: absolute;
+  width: 76px;
+  height: 108px;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.45),
+    0 4px 8px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8px 10px;
+  font-family: Georgia, serif;
+  font-weight: 700;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+.cardCornerTop {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.cardSuit {
+  font-size: 38px;
+  text-align: center;
+  line-height: 1;
+}
+
+.cardCornerBottom {
+  font-size: 18px;
+  line-height: 1;
+  align-self: flex-end;
+  transform: rotate(180deg);
+}
+
+.root {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.55s ease-in;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.skipHint {
+  position: fixed;
+  bottom: 24px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--hint);
+  z-index: 100000;
+  pointer-events: none;
+}
+
+@keyframes svrSpHero {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+    filter: blur(8px);
+  }
+  60% {
+    filter: blur(0);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+@keyframes svrSpShine {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+@keyframes svrSpFadeUp {
+  0% {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@keyframes svrSpExit {
+  0% {
+    transform: translateY(-12%) scale(1);
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    transform: translateY(-18%) scale(1.18);
+    opacity: 0;
+    filter: blur(10px);
+  }
+}

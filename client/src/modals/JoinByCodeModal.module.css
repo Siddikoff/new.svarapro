@@ -1,0 +1,36 @@
+/* JoinByCodeModal — static styles extracted from inline. */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.backBtn {
+  background: var(--input);
+  border: none;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--hint);
+  margin-bottom: 20px;
+}
+
+.codeInput {
+  margin-bottom: 14px;
+  text-align: center;
+  letter-spacing: 4px;
+  font-weight: 700;
+}

@@ -1,0 +1,72 @@
+/* BetRangeSlider — static styles extracted from inline. */
+
+.root {
+  padding: 8px 14px 14px;
+}
+
+.labelRow {
+  position: relative;
+  height: 18px;
+  margin-bottom: 14px;
+}
+
+.label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: 12px;
+  font-weight: 600;
+  transition: color 0.15s;
+  white-space: nowrap;
+}
+
+.track {
+  position: relative;
+  height: 4px;
+  background: var(--div);
+  border-radius: 2px;
+}
+
+.fill {
+  position: absolute;
+  top: 0;
+  height: 4px;
+  /* Selected range fill is the bright accent blue; the unfilled rest of
+   * the track stays gray via the parent `.track`'s `var(--div)`. */
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.tick {
+  position: absolute;
+  top: -6px;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 16px;
+  border-radius: 1.5px;
+}
+
+.handle {
+  position: absolute;
+  top: -11px;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 26px;
+  border-radius: 6px;
+  background: #dde2e8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: grab;
+  touch-action: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  z-index: 2;
+}
+
+.handleStripe {
+  width: 2px;
+  height: 12px;
+  background: #5a6a7a;
+  border-radius: 1px;
+}

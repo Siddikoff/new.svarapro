@@ -1,0 +1,700 @@
+/* Seat — static styles extracted from inline. */
+
+.avatarWrap {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.avatar {
+  border-radius: 50%;
+  background-size: cover;
+  background-position: center;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Winner avatar: golden pulsing ring + radial halo + twinkling sparkles ─
+ * Mirrors the reference video where the winning player's avatar gains a
+ * solid gold border that "breathes" outward, a soft circular glow behind
+ * it, and a handful of small four-point stars that twinkle around the
+ * rim. Driven by `winner` prop on the Avatar component. */
+
+.avatarWrapWinner {
+  /* Keep stacking context above neighbouring nameplates / cards so the
+   * sparkles render on top, not behind the chip layer. */
+  z-index: 3;
+}
+
+.avatarWinner {
+  border-color: #ffd84a;
+  animation: svrAvatarWinnerRing 1.4s ease-in-out infinite;
+}
+
+@keyframes svrAvatarWinnerRing {
+  0%,
+  100% {
+    border-color: #ffd84a;
+    box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.45),
+      0 0 8px 1px rgba(255, 200, 60, 0.6),
+      0 0 16px 3px rgba(255, 180, 40, 0.35);
+  }
+  50% {
+    border-color: #fff3a8;
+    box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.45),
+      0 0 14px 3px rgba(255, 215, 90, 0.95),
+      0 0 30px 9px rgba(255, 195, 60, 0.55);
+  }
+}
+
+.avatarHalo {
+  position: absolute;
+  top: -14px;
+  left: -14px;
+  right: -14px;
+  bottom: -14px;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    rgba(255, 215, 90, 0.45) 0%,
+    rgba(255, 200, 60, 0.22) 45%,
+    transparent 70%
+  );
+  z-index: 0;
+  pointer-events: none;
+  animation: svrAvatarWinnerHalo 1.4s ease-in-out infinite;
+}
+
+@keyframes svrAvatarWinnerHalo {
+  0%,
+  100% {
+    transform: scale(0.9);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+.avatarSparkles {
+  position: absolute;
+  inset: -18px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.sparkle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  /* Four-point star clip so each particle reads as a sparkle rather than
+   * a generic dot. Pure CSS so we don't need an SVG sprite per seat. */
+  clip-path: polygon(
+    50% 0%,
+    58% 42%,
+    100% 50%,
+    58% 58%,
+    50% 100%,
+    42% 58%,
+    0% 50%,
+    42% 42%
+  );
+  background: #fff7d6;
+  filter: drop-shadow(0 0 4px rgba(255, 215, 90, 0.95))
+    drop-shadow(0 0 8px rgba(255, 195, 60, 0.5));
+  opacity: 0;
+  transform: scale(0.3);
+  animation: svrSparkleTwinkle 1.6s ease-in-out infinite;
+}
+
+.s1 {
+  top: -4px;
+  left: 50%;
+  margin-left: -5px;
+  animation-delay: 0ms;
+}
+.s2 {
+  top: 22%;
+  right: -8px;
+  animation-delay: 220ms;
+}
+.s3 {
+  bottom: 22%;
+  right: -6px;
+  animation-delay: 460ms;
+  width: 8px;
+  height: 8px;
+}
+.s4 {
+  bottom: -4px;
+  left: 50%;
+  margin-left: -5px;
+  animation-delay: 700ms;
+}
+.s5 {
+  bottom: 22%;
+  left: -6px;
+  animation-delay: 940ms;
+  width: 8px;
+  height: 8px;
+}
+.s6 {
+  top: 22%;
+  left: -8px;
+  animation-delay: 1180ms;
+}
+
+@keyframes svrSparkleTwinkle {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.3) rotate(0deg);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.15) rotate(90deg);
+  }
+  70% {
+    opacity: 0.5;
+    transform: scale(0.85) rotate(180deg);
+  }
+}
+
+.inviteArrow {
+  position: absolute;
+  left: 50%;
+  top: -24px;
+  width: 22px;
+  height: 30px;
+  pointer-events: none;
+  z-index: 3;
+  transform: translateX(-50%);
+  animation: svrSeatInviteBounce 1.2s cubic-bezier(0.5, 0, 0.4, 1) infinite;
+  filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.45));
+}
+
+.inviteHalo {
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(255, 210, 110, 0.55) 0%,
+    rgba(255, 180, 60, 0.22) 45%,
+    rgba(255, 180, 60, 0) 72%
+  );
+  filter: blur(2px);
+  transform: translateX(-50%);
+  animation: svrSeatInviteGlow 1.2s ease-in-out infinite;
+}
+
+.inviteSvg {
+  position: relative;
+  display: block;
+}
+
+.emptyBtn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.emptyAvatar {
+  position: relative;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 30%, #2e2e32 0%, #1a1a1e 60%, #111114 100%);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.7),
+    inset 0 1px 2px rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.emptyPlus {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #2a7a3a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 14px;
+  line-height: 1;
+  font-weight: bold;
+}
+
+.nameWrap {
+  position: relative;
+  border-radius: 8px;
+  text-align: center;
+  min-width: 72px;
+  max-width: 124px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  display: flex;
+  align-items: stretch;
+}
+
+/* Layout-neutral wrapper for the name plate. Has the exact same
+ * footprint as `.nameWrap` (no padding, no margin), it only exists so
+ * the absolutely-positioned `.timerRing` has a containing block to
+ * extend beyond. Without this wrapper the ring would either be clipped
+ * by `.nameWrap`'s `overflow: hidden` or have to live in a parent that
+ * shifts when the timer turns on. */
+.nameWrapOuter {
+  position: relative;
+  display: inline-block;
+  vertical-align: top;
+}
+
+/* Conic-gradient ring drawn just outside the dark name plate. The ring
+ * is absolutely positioned (inset: -4px) so it adds no height to the
+ * seat and the avatar never reflows when the turn timer appears or
+ * disappears. `border-radius` is `.nameWrap`'s 8px + 4px ring → 12px
+ * so the corners hug the plate. `z-index: 0` keeps the ring behind the
+ * plate so the conic gradient only shows in the 4 px border area. */
+.timerRing {
+  position: absolute;
+  inset: -4px;
+  border-radius: 12px;
+  z-index: 0;
+  pointer-events: none;
+  animation: timerPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes timerPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* Green "очко" chip that sits flush against the left edge of the name plate
+ * once the player opens their hand. Width grows automatically for 2-digit
+ * scores while staying glued to the plate edge. Rendered for **every** seat
+ * with a hand (showdown + me-seat «Открыть») so all players read identically. */
+.scoreChip {
+  background: linear-gradient(180deg, #2a8a3b 0%, #1e6d2c 55%, #155421 100%);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
+  padding: 0 8px;
+  min-width: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
+  /* Chip reveals together with the cards: starts at HAND_ENTER_DURATION_MS
+   * (220ms, the moment the flip animation kicks in) and finishes at the same
+   * frame as HAND_FLIP_DURATION_MS (560ms) so the chip is fully painted the
+   * instant the cards land face-up. */
+  animation: svrScoreChipIn 560ms cubic-bezier(0.34, 1.4, 0.64, 1) 220ms both;
+}
+
+/* SVARA tie highlight: chip swaps to a hot gold gradient and pulses so
+ * tied seats read as "in svara" at a glance. The chip pops in WITH the
+ * gold gradient already painted (background applied from frame 1) and
+ * starts the blink the instant the entry animation finishes (780ms) so
+ * there's no perceptible "normal green → blink" transition. */
+.scoreChipSvara {
+  background: linear-gradient(180deg, #ffe48a 0%, #f5a623 55%, #b86a05 100%);
+  color: #2a1500;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+  animation:
+    svrScoreChipIn 560ms cubic-bezier(0.34, 1.4, 0.64, 1) 220ms both,
+    svrSvaraChipBlink 900ms ease-in-out 780ms infinite;
+}
+
+@keyframes svrSvaraChipBlink {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 200, 80, 0));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.4),
+      0 0 0 0 rgba(255, 200, 80, 0);
+  }
+  50% {
+    transform: scale(1.12);
+    filter: drop-shadow(0 0 8px rgba(255, 200, 80, 0.85));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      0 0 14px 2px rgba(255, 200, 80, 0.65);
+  }
+}
+
+/* Winner highlight: chip swaps to a gold gradient and pulses gently,
+ * matching the Svara-style cadence so the blink reads as celebratory
+ * rather than alarming. */
+.scoreChipWinner {
+  background: linear-gradient(180deg, #fff3a8 0%, #ffc93a 55%, #c67800 100%);
+  color: #2a1500;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+  animation: svrWinnerChipBlink 900ms ease-in-out 0ms infinite;
+}
+
+@keyframes svrWinnerChipBlink {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 215, 80, 0));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.45),
+      0 0 0 0 rgba(255, 215, 80, 0);
+  }
+  50% {
+    transform: scale(1.12);
+    filter: drop-shadow(0 0 8px rgba(255, 220, 100, 0.9));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.6),
+      0 0 14px 2px rgba(255, 220, 100, 0.7);
+  }
+}
+
+.nameRight {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.betLabel {
+  background: #1d6cb8;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.nameBox {
+  padding: 3px 10px 5px;
+}
+
+.nameText {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.2px;
+}
+
+.stackText {
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 1px;
+}
+
+.dealerChip {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #1a1a1a;
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+  z-index: 2;
+}
+.dealerChip.left {
+  left: -22px;
+}
+.dealerChip.right {
+  right: -22px;
+}
+
+.reactionBubble {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  pointer-events: none;
+  animation: svrReactPop 2.5s cubic-bezier(0.34, 1.32, 0.64, 1) both;
+}
+
+.reactionInner {
+  position: relative;
+  background: #ffffff;
+  color: #1a2533;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 700;
+  width: max-content;
+  max-width: 220px;
+  min-width: 64px;
+  text-align: center;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  white-space: pre-line;
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.reactionInner.emoji {
+  padding: 6px 8px;
+}
+.reactionInner.text {
+  padding: 9px 14px;
+}
+
+.reactionTail {
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 8px solid #ffffff;
+  filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.2));
+}
+
+.seatWrap {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  z-index: 10;
+}
+
+.spacer {
+  width: 80px;
+  height: 34px;
+  visibility: hidden;
+}
+
+.seatContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Avatar sits flush with the name plate beneath it — when the turn
+   * timer ring (`.timerRing`, `inset: -4px`) is active, the ring's top
+   * edge intentionally overlaps the bottom 4 px of the avatar. The
+   * user prefers that to a permanent gap between photo and plate. */
+  gap: 0;
+  transition: opacity 280ms ease, filter 280ms ease;
+}
+
+.relative {
+  position: relative;
+}
+
+/* Wraps avatar + crown + win-amount badge so they can be lifted in the
+ * stacking order as a group. Used to bring the me-seat avatar in front of
+ * the open hand fan when the bottom player wins (otherwise the photo and
+ * crown are hidden behind their own cards). For non-me seats this is a
+ * no-op wrapper. */
+.avatarStack {
+  position: relative;
+  display: inline-block;
+}
+
+/* When the bottom (me) seat is the winner, raise the avatar group above
+ * the MyHand cards (`.myHandPos` is z-index 6) so the photo, crown and
+ * win-amount badge render in front of the cards. Cards stay in place
+ * visually behind the avatar. */
+.avatarStackLifted {
+  z-index: 12;
+}
+
+/* Keyframes used by the classes above. They are also declared globally in
+ * GameRoomKeyframes.tsx (so inline-style references keep working), but CSS
+ * Modules scopes `animation-name` to the local file, which means the global
+ * keyframe name never matched the scoped reference and animations silently
+ * stopped running. Declaring them here ensures both the reference and the
+ * keyframe end up under the same hashed name. */
+@keyframes svrSeatInviteBounce {
+  0%,
+  100% {
+    transform: translateX(-50%) translateY(0);
+    animation-timing-function: cubic-bezier(0.5, 0, 0.4, 1);
+  }
+  45% {
+    transform: translateX(-50%) translateY(-10px);
+    animation-timing-function: cubic-bezier(0.6, 0, 0.5, 1);
+  }
+  60% {
+    transform: translateX(-50%) translateY(-9px);
+  }
+  80% {
+    transform: translateX(-50%) translateY(0);
+  }
+  88% {
+    transform: translateX(-50%) translateY(-3px);
+  }
+  96% {
+    transform: translateX(-50%) translateY(0);
+  }
+}
+@keyframes svrSeatInviteGlow {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translateX(-50%) scale(0.9);
+  }
+  50% {
+    opacity: 0.95;
+    transform: translateX(-50%) scale(1.05);
+  }
+}
+@keyframes svrReactPop {
+  0% {
+    transform: translate(-50%, 8px) scale(0.6);
+    opacity: 0;
+  }
+  5% {
+    transform: translate(-50%, -3px) scale(1.08);
+    opacity: 1;
+  }
+  10% {
+    transform: translate(-50%, 0) scale(1);
+    opacity: 1;
+  }
+  92% {
+    transform: translate(-50%, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -6px) scale(0.96);
+    opacity: 0;
+  }
+}
+@keyframes svrScoreChipIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-6px) scale(0.7);
+  }
+  60% {
+    opacity: 1;
+    transform: translateX(0) scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+/* ── Winner animation ─────────────────────────────────────────────── */
+
+.winnerCrown {
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 30px;
+  z-index: 10;
+  pointer-events: none;
+  animation: crownDrop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.55));
+}
+
+@keyframes crownDrop {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-32px) scale(0.3);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+/* Winner amount pill — dark capsule with glowing orange text. Sits on the
+ * bottom of the winner's avatar (overlapping the lower portion of the
+ * photo) so it visually replaces the in-round action badge once the chips
+ * have landed. */
+.winnerAmount {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #2a1a08 0%, #14100a 100%);
+  border: 1px solid rgba(255, 170, 60, 0.55);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.2px;
+  color: #5cf08a;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 11;
+  line-height: 1;
+  box-shadow:
+    0 0 0 2px rgba(0, 0, 0, 0.35),
+    0 0 12px rgba(255, 165, 50, 0.65),
+    0 0 22px rgba(255, 140, 30, 0.45),
+    0 2px 6px rgba(0, 0, 0, 0.55);
+  text-shadow:
+    0 0 6px rgba(95, 235, 145, 0.85),
+    0 1px 2px rgba(0, 0, 0, 0.7);
+  animation:
+    winnerAmountIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    winnerAmountPulse 1.3s ease-in-out 0.55s infinite;
+  transform-origin: center;
+}
+
+@keyframes winnerAmountIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px) scale(0.5);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes winnerAmountPulse {
+  0%,
+  100% {
+    transform: translateX(-50%) scale(1);
+    box-shadow:
+      0 0 0 2px rgba(0, 0, 0, 0.35),
+      0 0 12px rgba(255, 165, 50, 0.65),
+      0 0 22px rgba(255, 140, 30, 0.45),
+      0 2px 6px rgba(0, 0, 0, 0.55);
+  }
+  50% {
+    transform: translateX(-50%) scale(1.06);
+    box-shadow:
+      0 0 0 2px rgba(0, 0, 0, 0.4),
+      0 0 18px rgba(255, 185, 70, 0.85),
+      0 0 32px rgba(255, 150, 30, 0.65),
+      0 2px 6px rgba(0, 0, 0, 0.55);
+  }
+}
+
+

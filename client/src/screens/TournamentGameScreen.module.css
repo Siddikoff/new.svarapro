@@ -1,0 +1,303 @@
+/* TournamentGameScreen — static styles extracted from inline. */
+
+.root {
+  padding-bottom: 100px;
+}
+
+.coverWrap {
+  position: relative;
+  overflow: hidden;
+}
+
+.coverFade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.1) 0%,
+    rgba(23, 33, 43, 0.2) 60%,
+    rgba(23, 33, 43, 1) 100%
+  );
+}
+
+.coverCaption {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+}
+
+.coverTitle {
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+  margin-top: 8px;
+  letter-spacing: 0.2px;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+}
+
+.statsRow {
+  display: flex;
+  gap: 8px;
+  padding: 14px 16px 6px;
+}
+
+.statCard {
+  flex: 1;
+  background: var(--bg2);
+  border-radius: 12px;
+  padding: 12px 8px;
+  text-align: center;
+}
+
+.statValue {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.statSlash {
+  font-size: 13px;
+  color: var(--hint);
+  font-weight: 400;
+}
+
+.statLabel {
+  font-size: 11px;
+  color: var(--hint);
+  margin-top: 2px;
+}
+
+.countdownRow {
+  margin: 8px 16px 16px;
+  background: var(--bg2);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.countdownLabel {
+  font-size: 13px;
+  color: var(--hint);
+}
+
+.section {
+  padding: 0 16px 16px;
+}
+.sectionLast {
+  padding: 0 16px 8px;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  color: var(--hint);
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 0 4px 8px;
+}
+
+.stepsList {
+  background: var(--bg2);
+  border-radius: 12px;
+  padding: 4px 0;
+}
+
+.stepRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--div);
+}
+.stepRow.last {
+  border-bottom: none;
+}
+
+.stepNumber {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.stepText {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.prizeBox {
+  background: var(--bg2);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.prizeRow {
+  margin-bottom: 12px;
+}
+.prizeRow.last {
+  margin-bottom: 0;
+}
+
+.prizeHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.prizePlace {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.prizeAmount {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.prizePercent {
+  color: var(--hint);
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.prizeBarTrack {
+  height: 6px;
+  background: var(--surface);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.prizeBarFill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.rulesList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ruleCard {
+  background: var(--bg2);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.ruleHead {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ruleIcon {
+  font-size: 16px;
+}
+
+.ruleBody {
+  font-size: 13px;
+  color: var(--hint);
+  line-height: 1.55;
+  white-space: pre-line;
+}
+
+.ctaWrap {
+  position: fixed;
+  bottom: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  padding: 12px 16px;
+  z-index: 40;
+}
+
+.successBody {
+  text-align: center;
+  padding: 20px 0 16px;
+}
+
+.successBadge {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4dcd5e, #2a9e40);
+  margin: 0 auto 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation:
+    tjoin_pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    tjoin_pulse 1.4s ease-out 0.5s 2;
+}
+
+.successCheckPath {
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  animation: tjoin_check 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.35s forwards;
+}
+
+.successTitle {
+  font-size: 20px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.successHint {
+  font-size: 14px;
+  color: var(--hint);
+  margin-bottom: 4px;
+}
+
+.successName {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 22px;
+}
+
+@keyframes tjoin_pop {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes tjoin_check {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes tjoin_pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(77, 205, 94, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 18px rgba(77, 205, 94, 0);
+  }
+}

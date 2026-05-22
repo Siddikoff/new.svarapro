@@ -1,0 +1,84 @@
+/* RoomCard — static styles extracted from inline. */
+
+.card {
+  background: var(--bg2);
+  border-radius: 12px;
+  padding: 14px 12px;
+  margin-bottom: 10px;
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.headerCell {
+  flex: 1;
+  font-size: 12px;
+  color: var(--hint);
+  text-align: center;
+}
+
+.headerSpacer {
+  width: 90px;
+}
+
+.divider {
+  height: 1px;
+  background: var(--div);
+  margin-bottom: 10px;
+}
+
+.bodyRow {
+  display: flex;
+  align-items: center;
+}
+
+.bodyCell {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.numPrefix {
+  color: var(--hint);
+  font-weight: 400;
+}
+
+.playersCur {
+  color: #4dcd5e;
+}
+
+.playersMax {
+  color: var(--hint);
+  font-weight: 400;
+}
+
+.actionsCol {
+  width: 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.joinBtn {
+  width: 100%;
+  padding: 7px 0;
+  border: none;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.watchBtn {
+  background: none;
+  border: none;
+  font-size: 13px;
+}

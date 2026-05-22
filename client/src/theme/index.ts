@@ -1,0 +1,1 @@
+export { detectSystemTheme } from './systemTheme';

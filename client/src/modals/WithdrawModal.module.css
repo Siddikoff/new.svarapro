@@ -1,0 +1,237 @@
+/* WithdrawModal — static styles extracted from inline. */
+
+.successOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  animation: svrFade 0.25s ease-out;
+}
+
+.successCard {
+  background: var(--bg2);
+  color: var(--text);
+  border-radius: 22px;
+  width: 100%;
+  max-width: 320px;
+  padding: 28px 24px 22px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  animation: svrPop 0.35s cubic-bezier(0.22, 1.4, 0.36, 1);
+  text-align: center;
+}
+
+.successBadge {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: #4dcd5e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 8px rgba(77, 205, 94, 0.15);
+}
+
+.successCheck {
+  stroke-dasharray: 26;
+  animation: svrCheckDraw 0.55s 0.12s ease-out both;
+}
+
+.successKicker {
+  font-size: 13px;
+  font-weight: 800;
+  color: #4dcd5e;
+  letter-spacing: 1.2px;
+  margin-bottom: 6px;
+}
+
+.successAmount {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 4px;
+  letter-spacing: -0.3px;
+}
+
+.successHint {
+  font-size: 13px;
+  color: var(--hint);
+  margin-bottom: 12px;
+}
+
+.successBtn {
+  width: 100%;
+  background: #2481cc;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 0;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--hint);
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.headerRow.tight {
+  margin-bottom: 18px;
+}
+
+.backBtn {
+  background: var(--input);
+  border: none;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.methodRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.confirmTitle {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.methodLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: var(--hint);
+  font-size: 13px;
+}
+
+.fieldLabel {
+  font-size: 13px;
+  color: var(--hint);
+  margin-bottom: 8px;
+}
+
+.summaryBox {
+  background: var(--input);
+  border-radius: 12px;
+  padding: 4px 12px;
+  margin-bottom: 14px;
+}
+
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--div);
+}
+.summaryRow.start {
+  align-items: flex-start;
+  gap: 12px;
+}
+.summaryRow.last {
+  border-bottom: none;
+}
+
+.summaryLabel {
+  color: var(--hint);
+  font-size: 13px;
+}
+.summaryLabel.fixed {
+  flex-shrink: 0;
+}
+
+.summaryValueBig {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.summaryAddress {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: right;
+  word-break: break-all;
+  font-variant-numeric: tabular-nums;
+}
+
+.summaryValue {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.summaryFee {
+  color: #e05c5c;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.summaryReceive {
+  color: #4dcd5e;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.noticeBox {
+  background: var(--tint-blue);
+  border: 1px solid rgba(36, 129, 204, 0.27);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.confirmBtn {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+}
+
+.cancelBtn {
+  width: 100%;
+  background: transparent;
+  color: var(--hint);
+  border: none;
+  padding: 10px 0;
+  margin-top: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.fieldGap {
+  margin-bottom: 12px;
+}
