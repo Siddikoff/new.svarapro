@@ -1,0 +1,1284 @@
+import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import { DEFAULT_RAKE_PERCENT } from './constants/app';
+import {
+  CHAT_BUTTON_BOTTOM,
+  PLATFORM_HEADER_TOP,
+  TABLE_MAX_HEIGHT,
+} from './designSystem';
+import { ActionButtons, PostOpenButtons, SpectatorBar } from './features/gameRoom/components/Actions';
+import { AnteOverlay } from './features/gameRoom/components/AnteOverlay';
+import { BetOverlay } from './features/gameRoom/components/BetOverlay';
+import { CenterDeck, FoldingSeatOverlay } from './features/gameRoom/components/Cards';
+import { ChatButton, ChatPanel, type ChatPickItem } from './features/gameRoom/components/Chat';
+import { GameRoomKeyframes } from './features/gameRoom/components/GameRoomKeyframes';
+import { ConfirmExit, GameMenu, Header } from './features/gameRoom/components/Menu';
+import { PotView } from './features/gameRoom/components/PotView';
+import { RaiseSheet } from './features/gameRoom/components/RaiseSheet';
+import { SeatsLayer, type SeatsLayerSeat } from './features/gameRoom/components/SeatsLayer';
+import {
+  SvaraBanner,
+  type SvaraDecision,
+  type SvaraPhase,
+} from './features/gameRoom/components/SvaraBanner';
+import { Table } from './features/gameRoom/components/Table';
+import { WinnerChipsOverlay } from './features/gameRoom/components/WinnerChipsOverlay';
+import {
+  ANTE_CHIP_DURATION_MS,
+  ANTE_CHIP_STAGGER_MS,
+  CARDS_PER_SEAT,
+  DEAL_STAGGER_MS,
+  getAnteTotalMs,
+  getThemeColors,
+  HAND_ENTER_DURATION_MS,
+  HAND_FOLD_FLIGHT_MS,
+  HAND_FOLD_TOTAL_MS,
+  type SeatAnchorPos,
+  TABLE_PRESETS,
+} from './features/gameRoom/constants';
+import { type Card,dealHand, preloadCardImages, svaraHandScore } from './features/gameRoom/deck';
+import { useBodyScrollLock } from './features/gameRoom/hooks/useBodyScrollLock';
+import { useChatReactions } from './features/gameRoom/hooks/useChatReactions';
+import { useGameSettings } from './features/gameRoom/hooks/useGameSettings';
+import { type RotationSeat,useSeatRotation } from './features/gameRoom/hooks/useSeatRotation';
+import { useTgBackButton } from './features/gameRoom/hooks/useTgBackButton';
+import { playCardFlickSound, playCardOpenSound, playPokerChipSound, playSvaraAnnounceSound, playTurnStartSound, playWinnerSound } from './features/gameRoom/sounds';
+import styles from './GameRoom.module.css';
+import { sendGameAction } from './services/gameSocket';
+import { hapticTap } from './services/haptics';
+import { getTelegramWebApp, shareToTelegram } from './services/telegram';
+import { useGameStore } from './store/gameStore';
+
+type Theme = 'light' | 'dark';
+type ThemePref = 'light' | 'dark' | 'system';
+
+export interface GameRoomRoom {
+  id?: number | string;
+  num: number;
+  players?: number;
+  max?: number;
+  password?: string;
+  rakePercent?: number;
+  code?: string;
+}
+
+export interface GameRoomProps {
+  room: GameRoomRoom;
+  onExit: () => void;
+  onSetThemePref?: (pref: ThemePref) => void;
+  onTakeSeat?: (seat: RotationSeat | { pos: SeatAnchorPos } | null) => void;
+  waitForNextRound?: boolean;
+  themePref?: ThemePref;
+  blindAmount?: number;
+  theme?: Theme;
+  spectator?: boolean;
+}
+
+interface FoldingEntry {
+  displayPos: SeatAnchorPos;
+}
+
+type FoldingMap = Record<string, FoldingEntry>;
+
+// ── Turn-timer constants ────────────────────────────────────────────
+const TURN_DURATION_MS = 15_000;
+// Small delay after deal animation finishes before the timer starts.
+const TURN_START_DELAY_MS = 800;
+
+// How long to wait after the showdown flip before the big SVARA splash
+// appears on the felt. Tied score-chips/badges flip into the SVARA tie
+// state immediately (so they animate in already gold + pulsing), but the
+// on-table splash is delayed by ~1s so the player gets a beat to read
+// everyone's cards before the title takes over the felt.
+const SVARA_REVEAL_DELAY_MS = 1000;
+
+interface BetFlight {
+  id: number;
+  seatId: string;
+  chipCount: number;
+  slotStart: number;
+}
+
+function getBetChipCount(amount: number): number {
+  if (amount <= 5) return 1;
+  if (amount <= 10) return 2;
+  if (amount <= 20) return 3;
+  if (amount <= 50) return 4;
+  if (amount <= 100) return 5;
+  if (amount <= 200) return 6;
+  if (amount <= 1000) return 8;
+  return 10;
+}
+
+const MAX_VISIBLE_BET_PILE_SLOTS = 18;
+
+// Per-seat demo ante value. Mirrors the mock pot calc lower in this file
+// (`seats * 10`) so the bank readout, the winner badge, and the count-down
+// sweep all stay in lock-step until the backend supplies a real `pot`.
+const ANTE_PER_SEAT_DEMO = 10;
+
+/**
+ * GameRoom — top-level table screen.
+ *
+ * Decomposed into:
+ *   - hooks/useSeatRotation       — seating state machine
+ *   - hooks/useChatReactions      — per-seat reactions + WebAudio
+ *   - hooks/useGameSettings       — persistent felt / sound / vibration
+ *   - hooks/useTgBackButton       — Telegram BackButton confirm-exit
+ *   - hooks/useBodyScrollLock     — scroll-lock the document while mounted
+ *   - components/Table            — pill-shaped felt with rails & gloss
+ *   - components/PotView          — center bank readout + waiting pill
+ *   - components/SeatsLayer       — memoized seat list
+ *   - components/GameRoomKeyframes — global @keyframes used by the table
+ *   - Header / GameMenu / ConfirmExit / CenterDeck / ChatPanel / ActionButtons
+ */
+export default function GameRoom({
+  room,
+  onExit,
+  onSetThemePref,
+  onTakeSeat,
+  waitForNextRound = false,
+  themePref = 'dark',
+  blindAmount = 20,
+  theme = 'dark',
+  spectator = false,
+}: GameRoomProps) {
+  const chatVariant = useMemo<'ghost' | 'soft' | 'blue'>(() => {
+    try {
+      const url = new URL(window.location.href);
+      const v = url.searchParams.get('chatbtn');
+      if (v === 'ghost' || v === 'soft' || v === 'blue') return v;
+      return 'soft';
+    } catch {
+      return 'soft';
+    }
+  }, []);
+
+  const {
+    seats,
+    getDisplayPos,
+    activeDealOrder,
+    joinedMidDeal,
+    aloneInRoom,
+    showDealing,
+    handleTakeSeat,
+  } = useSeatRotation({ room, spectator, waitForNextRound, onTakeSeat });
+
+  const settings = useGameSettings();
+  const t = getThemeColors(theme);
+  const telegramPlatform = useMemo<string>(() => {
+    const tg = getTelegramWebApp();
+    if (tg?.platform) return tg.platform;
+    if (typeof navigator === 'undefined') return 'unknown';
+    const ua = navigator.userAgent || '';
+    if (/Android/i.test(ua)) return 'android';
+    if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
+    return 'unknown';
+  }, []);
+  const isAndroidTelegram = telegramPlatform === 'android';
+  const platformPadding = PLATFORM_HEADER_TOP as Record<string, number | undefined>;
+  const headerTopPadding =
+    platformPadding[telegramPlatform] ?? platformPadding.default ?? 14;
+
+  // Android-only: shrink the open-hand fan (cards + score badge) a touch so
+  // it doesn't crowd the felt on smaller Android WebViews. iOS keeps the
+  // original sizing. Picked up by `seatHandPositionStyle` in Cards.tsx
+  // through `--svr-hand-scale`, which gets composed with each seat's
+  // existing transform.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const body = document.body;
+    if (!body) return;
+    if (isAndroidTelegram) {
+      body.style.setProperty('--svr-hand-scale', '0.9');
+    } else {
+      body.style.removeProperty('--svr-hand-scale');
+    }
+    return () => {
+      body.style.removeProperty('--svr-hand-scale');
+    };
+  }, [isAndroidTelegram]);
+
+  // Canonical game state lives in the store; the WebSocket bridge writes it
+  // when `ROOM_STATE`/`GAME_TICK` arrive. Falls back to 0 / default rake
+  // when running without a backend.
+  const pot = useGameStore((state) => state.pot);
+  const rakePercent = room?.rakePercent ?? DEFAULT_RAKE_PERCENT;
+
+  // Demo pot tracking. The store-driven `pot` stays at 0 until a backend is
+  // wired, so we accumulate antes + bets locally and display whichever
+  // value is non-zero. During the winner sweep `potCountdown` overrides
+  // both so the bank counter visibly ticks down to 0 as chips arrive.
+  const localPotRef = useRef<number>(0);
+  const [localPot, setLocalPot] = useState<number>(0);
+  const [potCountdown, setPotCountdown] = useState<number | null>(null);
+  const potCountdownRafRef = useRef<number | null>(null);
+  const displayedPot = potCountdown ?? (pot > 0 ? pot : localPot);
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmExit, setConfirmExit] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  // Local UI toggle until real game state lands over WS — once the player
+  // taps «Открыть», swap the bottom panel to the post-open action set.
+  const [cardsOpened, setCardsOpened] = useState(false);
+  const [raiseOpen, setRaiseOpen] = useState(false);
+  // The 3-card hand shown above the me-seat avatar when the player opens.
+  // Until a backend is wired we deal a random hand from the 32-card Свара
+  // deck once the room mounts (and again every time a fresh round starts).
+  const [myHand, setMyHand] = useState<Card[]>(() => dealHand());
+  // Showdown — every seat's cards are flipped face-up simultaneously. Until
+  // a backend is wired, the demo trigger lives in the game menu («Вскрыть
+  // всех (демо)»). Each round resets `seatHands` and re-deals a random
+  // 3-card hand per seat so the cards differ from round to round.
+  const [seatHands, setSeatHands] = useState<Record<string, Card[]>>({});
+  const [showdown, setShowdown] = useState<boolean>(false);
+  // Seats currently playing the fold-toward-centre animation. Keyed by
+  // seat.id, value is `{ displayPos, faceUp, cards }` — a snapshot taken at
+  // trigger time so the overlay stays anchored to the original seat even if
+  // the seat layout rotates mid-animation. The same map will be driven by
+  // backend events later (one per player who folds).
+  const [foldingSeats, setFoldingSeats] = useState<FoldingMap>({});
+  // Свара state — populated when two or more seats share the top score at
+  // showdown. `svaraSeatIds` keys are stringified seat.id (matches the
+  // showdown `seatHands` keys). `myDecision` toggles between null /
+  // 'join' / 'decline' for the local player. Cleared on every new deal.
+  const [svaraSeatIds, setSvaraSeatIds] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+  const [svaraDecision, setSvaraDecision] = useState<SvaraDecision | null>(null);
+  // Two-stage Svara UI: the big centred SVARA title pulses 3-4 times on
+  // the felt, then the banner swaps to a popup card with the join/decline
+  // buttons. The phase is driven by a timer that fires once the banner
+  // becomes visible (`svaraBannerVisible`).
+  const [svaraPhase, setSvaraPhase] = useState<SvaraPhase>('announce');
+  // Gates the SvaraBanner render so the on-table SVARA splash appears
+  // ~1s AFTER the tie is detected (and the tied chips are already
+  // blinking). Without this gate the splash would land on the felt the
+  // same frame the cards finished flipping, which felt rushed.
+  const [svaraBannerVisible, setSvaraBannerVisible] = useState<boolean>(false);
+
+  // ── Winner state ────────────────────────────────────────────────
+  const [winnerSeatId, setWinnerSeatId] = useState<string | null>(null);
+  const [winnerAmount, setWinnerAmount] = useState<string | null>(null);
+  // WinnerChipsOverlay is a controller: when this is non-null it sweeps the
+  // actual on-table chips (the ones already rendered by AnteOverlay / BetOverlay)
+  // onto the winner's seat. It renders no chips of its own, so all it needs
+  // is the destination seat id.
+  const [winnerChipFlight, setWinnerChipFlight] = useState<{
+    seatId: string;
+    // Number of chips swept onto the winner. Drives the bank counter's
+    // tick-down duration so the counter hits 0 in lock-step with the
+    // last chip landing, regardless of how many chips are on the felt.
+    chipCount: number;
+  } | null>(null);
+  // Pending pot amount captured the moment the winner is selected. Cached
+  // in a ref so the per-chip landing callback can read the final figure
+  // without depending on the showdown effect's closure.
+  const pendingPotRef = useRef<number>(0);
+
+  // ── Ante animation ────────────────────────────────────────────────
+  // Bumped every time `showDealing` flips true so AnteOverlay re-mounts under
+  // a fresh key and replays the chip-toss for the new round. Stays at 0
+  // (overlay hidden) until the first deal kicks in.
+  const [anteRound, setAnteRound] = useState<number>(0);
+  const prevShowDealingRef = useRef<boolean>(false);
+
+  // True once the ante chip-toss has finished and the deck is allowed to
+  // appear / start dealing. We deliberately split this from `showDealing` so
+  // chips fly to the pot first, land, and only then the centre deck drops
+  // in and the card-deal animation begins.
+  const [cardsDealing, setCardsDealing] = useState<boolean>(false);
+  const [betFlights, setBetFlights] = useState<BetFlight[]>([]);
+  const betFlightIdRef = useRef<number>(0);
+  const betPileSlotRef = useRef<number>(0);
+  // Running count of chips currently sitting in the bank pile (ante + bets),
+  // capped at MAX_VISIBLE_BET_PILE_SLOTS so we never animate more chips than
+  // the player actually sees on the felt. Drives the winner sweep so every
+  // visible chip is sent to the winner — not a fixed 6–14 batch.
+  const bankChipCountRef = useRef<number>(0);
+
+  // ── Turn timer state ──────────────────────────────────────────────
+  // Which seat id (string) currently has the timer running.
+  const [activeTurnSeatId, setActiveTurnSeatId] = useState<string | null>(null);
+  // 0-1 progress: 1 = full time, 0 = expired.
+  const [turnTimerProgress, setTurnTimerProgress] = useState<number>(1);
+  const turnStartRef = useRef<number>(0);
+  const turnRafRef = useRef<number>(0);
+  // setTimeout backup for the auto-pass trigger. RAF is throttled inside
+  // backgrounded Telegram WebViews (and some mobile browsers when the user
+  // scrolls or switches apps), so we also schedule a hard setTimeout so the
+  // fold fires on time regardless of whether the RAF loop is ticking.
+  const turnTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref tracking whether auto-pass has already fired for the current
+  // turn cycle so neither the RAF loop nor the setTimeout backup call
+  // handlePass twice.
+  const autoPassedRef = useRef<boolean>(false);
+  // True once the dealing animation has finished — controls when buttons appear.
+  const [dealingDone, setDealingDone] = useState<boolean>(false);
+  // True after the me-seat auto-folds (timeout pass) — hides dealt cards.
+  const [myAutoFolded, setMyAutoFolded] = useState<boolean>(false);
+
+  // Bag of pending one-shot timers spawned from callbacks (fold cleanup,
+  // post-flight bar swap, card-open sound). They're cleared on unmount so a
+  // late `setState` can't fire on a dead component.
+  const timerRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(
+    () => () => {
+      timerRefs.current.forEach(clearTimeout);
+      timerRefs.current = [];
+      if (potCountdownRafRef.current != null) {
+        cancelAnimationFrame(potCountdownRafRef.current);
+        potCountdownRafRef.current = null;
+      }
+    },
+    [],
+  );
+
+  // Smooth bank count-down driven by rAF whenever the winner chip flight
+  // is active. Decoupled from the per-chip stagger so the readout always
+  // ticks down evenly across the full flight window, regardless of how
+  // many chips happen to be on the felt.
+  useEffect(() => {
+    if (!winnerChipFlight) return;
+    const startPot =
+      pendingPotRef.current > 0
+        ? pendingPotRef.current
+        : Math.max(localPotRef.current, 0);
+    if (startPot <= 0) {
+      setPotCountdown(0);
+      return;
+    }
+    // Slight buffer past the per-chip flight so the counter lands on 0 a
+    // hair after the last chip arrives — matches the "chips land, then
+    // counter clicks to 0" beat in the reference. Total window matches
+    // `chipFlightTotalMs` in the showdown effect (cluster spread + per
+    // chip duration).
+    const duration = 200 + 1800 + 220;
+    const start = performance.now();
+    setPotCountdown(startPot);
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      // Ease-out: chips burn off the counter quickly at the start, then
+      // the last few units slide to 0 in lock-step with the trailing chips.
+      const eased = 1 - Math.pow(1 - t, 1.4);
+      const next = Math.max(0, Math.round(startPot * (1 - eased)));
+      setPotCountdown(next);
+      if (t < 1) {
+        potCountdownRafRef.current = requestAnimationFrame(tick);
+      } else {
+        potCountdownRafRef.current = null;
+      }
+    };
+    potCountdownRafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (potCountdownRafRef.current != null) {
+        cancelAnimationFrame(potCountdownRafRef.current);
+        potCountdownRafRef.current = null;
+      }
+    };
+  }, [winnerChipFlight]);
+
+  // Warm the HTTP cache for every card PNG the moment the room mounts. The
+  // "Открыть" reveal flips a card front-face into view over ~560ms; on a cold
+  // cellular cache the <img> fetch can land mid-flip and produce a visible
+  // glitch (blank / half-loaded card). Preloading sidesteps that entirely.
+  useEffect(() => {
+    preloadCardImages();
+  }, []);
+
+  // ── Turn timer tick (requestAnimationFrame) ─────────────────────
+  // We keep handlePass in a ref so the RAF closure always calls the
+  // latest version without re-creating the animation loop.
+  const handlePassRef = useRef<(() => void) | null>(null);
+  // Audio ref so the timer-start effect can play sounds without
+  // depending on the `audio` value (defined later via useChatReactions).
+  const audioRef = useRef<{ ensureCtx: () => AudioContext | null; soundRef: MutableRefObject<boolean> } | null>(null);
+
+  useEffect(() => {
+    if (!activeTurnSeatId) return;
+    autoPassedRef.current = false;
+    turnStartRef.current = performance.now();
+    setTurnTimerProgress(1);
+
+    // Sound + vibration on turn start.
+    hapticTap();
+    if (audioRef.current?.soundRef.current) {
+      const ctx = audioRef.current.ensureCtx();
+      if (ctx) playTurnStartSound(ctx);
+    }
+
+    const fireAutoPass = () => {
+      if (autoPassedRef.current) return;
+      autoPassedRef.current = true;
+      handlePassRef.current?.();
+    };
+
+    const tick = () => {
+      const elapsed = performance.now() - turnStartRef.current;
+      const remaining = Math.max(0, 1 - elapsed / TURN_DURATION_MS);
+      setTurnTimerProgress(remaining);
+
+      if (remaining <= 0) {
+        fireAutoPass();
+        return;
+      }
+      turnRafRef.current = requestAnimationFrame(tick);
+    };
+    turnRafRef.current = requestAnimationFrame(tick);
+    // Backup trigger: setTimeout fires on time even when RAF is throttled.
+    turnTimeoutRef.current = setTimeout(fireAutoPass, TURN_DURATION_MS);
+    return () => {
+      cancelAnimationFrame(turnRafRef.current);
+      if (turnTimeoutRef.current != null) {
+        clearTimeout(turnTimeoutRef.current);
+        turnTimeoutRef.current = null;
+      }
+    };
+  }, [activeTurnSeatId]);
+
+  // Start the turn timer for the me-seat once the dealing animation ends.
+  // Driven by `cardsDealing` (post-ante) so the dealEnd math starts from the
+  // moment cards begin flying — not from the moment chips start moving.
+  useEffect(() => {
+    if (!cardsDealing) {
+      // Not dealing — clear any active timer.
+      setActiveTurnSeatId(null);
+      setDealingDone(false);
+      setMyAutoFolded(false);
+      return;
+    }
+    // Calculate the moment all cards have been dealt.
+    const totalDeals = CARDS_PER_SEAT * activeDealOrder.length;
+    const dealEndMs = (totalDeals - 1) * DEAL_STAGGER_MS + 720; // DEAL_DURATION_MS = 720
+
+    const t = setTimeout(() => {
+      setDealingDone(true);
+      const me = seats.find((s) => s.me);
+      if (me && me.id != null) {
+        setActiveTurnSeatId(String(me.id));
+      }
+    }, dealEndMs + TURN_START_DELAY_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardsDealing, activeDealOrder.length]);
+
+  // Bump `anteRound` on the rising edge of `showDealing` — AnteOverlay
+  // re-mounts under the new key and replays the chip-toss for the new round.
+  // While we're at it, schedule a poker-chip clink per landing chip. The
+  // stagger matches AnteOverlay's per-chip delay (`ANTE_CHIP_STAGGER_MS`).
+  //
+  // Timing of the clink:
+  //   - The chip flight uses cubic-bezier(0.45, 0.05, 0.25, 1), which is
+  //     heavily front-loaded: numerically integrating the curve shows the
+  //     chip covers ~90 % of its travel by t≈0.65 (~720 ms of an 1100 ms
+  //     animation). The remaining 10 % is a soft deceleration tail. The
+  //     *perceived* moment of impact lands near that 90 % mark, not at the
+  //     literal 100 % keyframe.
+  //   - We fire the clink ~40 ms before that perceived impact: human
+  //     audio-visual sync feels best when audio leads video by 20-50 ms
+  //     (in real life sound travels slower than light, our brain auto-
+  //     compensates). Tying the offset to the animation constant keeps it
+  //     honest if we ever retune the duration.
+  const CHIP_SOUND_OFFSET_MS = Math.round(ANTE_CHIP_DURATION_MS * 0.58) - 50;
+  useEffect(() => {
+    const rising = showDealing && !prevShowDealingRef.current;
+    const falling = !showDealing && prevShowDealingRef.current;
+    prevShowDealingRef.current = showDealing;
+    if (falling) {
+      // Round ended — close the deal gate so the next round starts with the
+      // ante toss only (no deck visible yet).
+      setCardsDealing(false);
+      return;
+    }
+    if (!rising) return;
+    setAnteRound((r) => r + 1);
+    setBetFlights([]);
+    betPileSlotRef.current = 0;
+    const occupied = seats.filter((s) => !s.empty && s.id != null).length;
+    // Ante puts one chip per occupied seat into the bank pile; the bank
+    // counter starts from there and grows with every subsequent bet flight.
+    bankChipCountRef.current = Math.min(MAX_VISIBLE_BET_PILE_SLOTS, occupied);
+    // Seed the local pot with this round's antes so the bank readout
+    // matches the chips that just landed on the felt.
+    localPotRef.current = occupied * ANTE_PER_SEAT_DEMO;
+    setLocalPot(localPotRef.current);
+    if (potCountdownRafRef.current != null) {
+      cancelAnimationFrame(potCountdownRafRef.current);
+      potCountdownRafRef.current = null;
+    }
+    setPotCountdown(null);
+    // Hold the deck off-screen until every chip has landed, then open the
+    // gate. With 0 occupied seats (edge case) skip the wait entirely.
+    const anteTotalMs = getAnteTotalMs(occupied);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    timers.push(
+      setTimeout(() => {
+        setCardsDealing(true);
+      }, anteTotalMs),
+    );
+    if (occupied === 0) {
+      return () => {
+        for (const t of timers) clearTimeout(t);
+      };
+    }
+    for (let i = 0; i < occupied; i += 1) {
+      timers.push(
+        setTimeout(() => {
+          const a = audioRef.current;
+          if (!a?.soundRef.current) return;
+          const ctx = a.ensureCtx();
+          if (!ctx) return;
+          try {
+            playPokerChipSound(ctx, i);
+          } catch {
+            // ignore
+          }
+        }, CHIP_SOUND_OFFSET_MS + i * ANTE_CHIP_STAGGER_MS),
+      );
+    }
+    return () => {
+      for (const t of timers) clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDealing]);
+
+  // Re-deal fresh hands at the start of every dealing animation. Each seat
+  // (including me) gets a hand assigned **up-front** so that when «Вскрыть
+  // всех» fires later, the showdown reveals the same three cards that were
+  // dealt out — not freshly generated ones. The backend can override this
+  // via WS later (one ROUND_START message carrying every seat's hand).
+  //
+  // `seats` is intentionally NOT in the deps array: the effect fires when
+  // `showDealing` flips to true, and the closure captures the seats from
+  // that render. Late joins/leaves mid-deal do not re-trigger another
+  // deck shuffle.
+  useEffect(() => {
+    if (!showDealing) return;
+    const myDealt = dealHand();
+    setMyHand(myDealt);
+    const dealt: Record<string, Card[]> = {};
+    for (const s of seats) {
+      if (s.empty || s.id == null) continue;
+      dealt[String(s.id)] = s.me ? myDealt : dealHand();
+    }
+    setSeatHands(dealt);
+    setShowdown(false);
+    setCardsOpened(false);
+    setFoldingSeats({});
+    setWinnerSeatId(null);
+    setWinnerAmount(null);
+    setWinnerChipFlight(null);
+    // Reset the pot count-down so the next round's bank starts at the
+    // freshly-seeded ante total rather than the previous winner's 0.
+    if (potCountdownRafRef.current != null) {
+      cancelAnimationFrame(potCountdownRafRef.current);
+      potCountdownRafRef.current = null;
+    }
+    setPotCountdown(null);
+    // Fresh deal — Svara state always resets so a stale tie from the
+    // previous round can't bleed into the new one.
+    setSvaraSeatIds(new Set<string>());
+    setSvaraDecision(null);
+    setSvaraPhase('announce');
+    setSvaraBannerVisible(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDealing, room?.id]);
+
+  // Generic fold trigger — works for any seat. Adds an entry to
+  // `foldingSeats` and schedules its removal after the animation finishes.
+  // Backend integration: call this from a WS handler with the folding
+  // player's seat. `faceUp` controls whether to render the face-up fan (the
+  // me-seat with cards open) or just card backs (everyone else).
+  const triggerSeatFold = useCallback(
+    ({ seat }: { seat: RotationSeat | null | undefined }) => {
+      if (!seat || seat.id == null) return;
+      const seatId = String(seat.id);
+      const displayPos = getDisplayPos(seat.pos);
+      // The overlay always renders a small face-down pile (no flip), so we
+      // don't need to snapshot the open hand here — the visual is identical
+      // whether the folding player had their cards open or not.
+      setFoldingSeats((prev) => ({
+        ...prev,
+        [seatId]: { displayPos },
+      }));
+      timerRefs.current.push(
+        setTimeout(() => {
+          setFoldingSeats((prev) => {
+            if (!(seatId in prev)) return prev;
+            const next = { ...prev };
+            delete next[seatId];
+            return next;
+          });
+        }, HAND_FOLD_TOTAL_MS),
+      );
+    },
+    [getDisplayPos],
+  );
+
+  const mySeat = seats.find((sx) => sx.me);
+  const mySeatId: string | number | null = mySeat?.id ?? null;
+  const mySeatKey: string | null = mySeatId == null ? null : String(mySeatId);
+
+  const triggerBetFlight = useCallback((amount: number) => {
+    if (mySeatId == null) return;
+    const id = betFlightIdRef.current + 1;
+    betFlightIdRef.current = id;
+    const chipCount = getBetChipCount(amount);
+    const slotStart = betPileSlotRef.current;
+    betPileSlotRef.current = (slotStart + chipCount) % MAX_VISIBLE_BET_PILE_SLOTS;
+    bankChipCountRef.current = Math.min(
+      MAX_VISIBLE_BET_PILE_SLOTS,
+      bankChipCountRef.current + chipCount,
+    );
+    // Bet amount feeds the local pot so the bank counter updates as soon as
+    // the chip flight kicks off. Wrapped in a same-tick state update so the
+    // counter and the flying chips appear in the same frame.
+    localPotRef.current += amount;
+    setLocalPot(localPotRef.current);
+    setBetFlights((prev) => [...prev, { id, seatId: String(mySeatId), chipCount, slotStart }]);
+    for (let i = 0; i < chipCount; i += 1) {
+      timerRefs.current.push(
+        setTimeout(() => {
+          const a = audioRef.current;
+          if (!a?.soundRef.current) return;
+          const ctx = a.ensureCtx();
+          if (!ctx) return;
+          try {
+            playPokerChipSound(ctx, i);
+          } catch {
+            // ignore
+          }
+        }, CHIP_SOUND_OFFSET_MS + i * ANTE_CHIP_STAGGER_MS),
+      );
+    }
+  }, [mySeatId]);
+
+  const callAmount = Math.round(blindAmount / 2);
+
+  const handleBlindBet = useCallback(() => {
+    hapticTap();
+    triggerBetFlight(blindAmount);
+    if (room?.id !== undefined) {
+      sendGameAction(String(room.id), 'blind', blindAmount);
+    }
+  }, [room?.id, blindAmount, triggerBetFlight]);
+
+  const handleCall = useCallback(() => {
+    hapticTap();
+    triggerBetFlight(callAmount);
+    if (room?.id !== undefined) {
+      sendGameAction(String(room.id), 'call', callAmount);
+    }
+  }, [room?.id, callAmount, triggerBetFlight]);
+
+  const handleRaise = useCallback(() => {
+    hapticTap();
+    setRaiseOpen(true);
+  }, []);
+
+  const handleRaiseConfirm = useCallback(
+    (amount: number) => {
+      setRaiseOpen(false);
+      triggerBetFlight(amount);
+      if (room?.id !== undefined) {
+        sendGameAction(String(room.id), 'raise', amount);
+      }
+    },
+    [room?.id, triggerBetFlight],
+  );
+
+  const handlePass = useCallback(() => {
+    hapticTap();
+    // Stop the turn timer (both RAF and the setTimeout backup).
+    setActiveTurnSeatId(null);
+    cancelAnimationFrame(turnRafRef.current);
+    if (turnTimeoutRef.current != null) {
+      clearTimeout(turnTimeoutRef.current);
+      turnTimeoutRef.current = null;
+    }
+    setMyAutoFolded(true);
+    if (room?.id !== undefined) {
+      sendGameAction(String(room.id), 'fold');
+    }
+    if (!mySeat) {
+      setCardsOpened(false);
+      return;
+    }
+    triggerSeatFold({ seat: mySeat });
+    timerRefs.current.push(
+      setTimeout(() => {
+        setCardsOpened(false);
+      }, HAND_FOLD_FLIGHT_MS),
+    );
+  }, [room?.id, mySeat, triggerSeatFold]);
+
+  // Keep the handlePass ref in sync for the RAF auto-pass.
+  useEffect(() => {
+    handlePassRef.current = handlePass;
+  }, [handlePass]);
+
+  const { reactions, showReaction, audio } = useChatReactions(settings.sound);
+  audioRef.current = audio;
+
+  // Showdown demo — flip every seat's cards face-up simultaneously. Deals a
+  // random 3-card Свара hand to every non-me seat, reuses `myHand` for the
+  // me-seat so the player's own cards don't change at the reveal, and marks
+  // the round as `showdown` so the action bar collapses to the spectator
+  // view (showdown ends the betting phase). Wiring this to a backend later
+  // is a one-line swap — replace the local `dealHand()` with the hands
+  // returned in ROUND_RESULT.
+  const handleShowdown = useCallback(() => {
+    hapticTap();
+    setMenuOpen(false);
+    // Hands are already pinned on every seat from the deal effect above —
+    // showdown just flips them face-up in place. If a seat joined after the
+    // deal and has no entry yet, deal one on the fly so they still flip.
+    setSeatHands((prev) => {
+      const next: Record<string, Card[]> = { ...prev };
+      for (const s of seats) {
+        if (s.empty || s.id == null) continue;
+        const key = String(s.id);
+        if (next[key]) continue;
+        next[key] = s.me ? myHand : dealHand();
+      }
+      return next;
+    });
+    setShowdown(true);
+    setCardsOpened(true);
+    // One reveal sound, timed so it lands together with the flip animation
+    // (HAND_ENTER_DURATION_MS is the entry delay before the flip kicks in).
+    timerRefs.current.push(
+      setTimeout(() => {
+        if (!audio.soundRef.current) return;
+        const ctx = audio.ensureCtx();
+        if (!ctx) return;
+        try {
+          playCardOpenSound(ctx);
+        } catch {}
+      }, HAND_ENTER_DURATION_MS),
+    );
+  }, [seats, myHand, audio]);
+
+  // Svara demo — force a tie at showdown. Picks the first 2-3 occupied
+  // seats (preferring the me-seat so the local player gets the join/decline
+  // buttons) and gives them the same easy-to-tie 3-card hand. The
+  // remaining seats keep a random hand so the tied seats stand out clearly.
+  // Will go away once the backend ROUND_RESULT carries real per-seat hands.
+  const handleSvaraDemo = useCallback(() => {
+    hapticTap();
+    setMenuOpen(false);
+    // High-suit 31-of-spades hand: A♠+K♠+10♠ scores 11+10+10 = 31. We use
+    // an identical hand for every tied seat so duplicate cards don't matter
+    // (the same caveat applies to the existing showdown demo).
+    const tiedHand: Card[] = [
+      { rank: 'A', suit: 'spade' },
+      { rank: 'K', suit: 'spade' },
+      { rank: '10', suit: 'spade' },
+    ];
+    const occupied = seats.filter((s) => !s.empty && s.id != null);
+    if (occupied.length < 2) return;
+    // Prefer the me-seat first so the local player sees the join/decline
+    // buttons; then fill up to three tied seats from the rest.
+    const ordered = [
+      ...occupied.filter((s) => s.me),
+      ...occupied.filter((s) => !s.me),
+    ];
+    const tieCount = Math.min(3, ordered.length);
+    const tiedKeys = new Set<string>();
+    const dealt: Record<string, Card[]> = {};
+    for (let i = 0; i < ordered.length; i += 1) {
+      const s = ordered[i];
+      if (s.id == null) continue;
+      const key = String(s.id);
+      if (i < tieCount) {
+        dealt[key] = tiedHand;
+        tiedKeys.add(key);
+      } else {
+        // Non-tied seats get a fresh random hand; on the rare chance it
+        // also scores 31 of spades the visual still reads correctly (they
+        // would just have ended up in the tie anyway).
+        dealt[key] = dealHand();
+      }
+    }
+    // Keep `myHand` in sync if the me-seat is part of the tie so the
+    // post-open card art matches the showdown reveal exactly.
+    const meKey = mySeatKey;
+    if (meKey && dealt[meKey]) {
+      setMyHand(dealt[meKey]);
+    }
+    setSeatHands(dealt);
+    setShowdown(true);
+    setCardsOpened(true);
+    // Pin tied seats immediately so their score-chips/badges paint as
+    // gold (and start the blink) the moment they animate in. The on-table
+    // SVARA splash itself is held back via `svaraBannerVisible` so the
+    // player still gets a beat with the cards before the title appears.
+    setSvaraSeatIds(tiedKeys);
+    setSvaraDecision(null);
+    setSvaraPhase('announce');
+    setSvaraBannerVisible(false);
+    timerRefs.current.push(
+      setTimeout(() => {
+        if (!audio.soundRef.current) return;
+        const ctx = audio.ensureCtx();
+        if (!ctx) return;
+        try {
+          playCardOpenSound(ctx);
+        } catch {}
+      }, HAND_ENTER_DURATION_MS),
+    );
+  }, [seats, mySeatKey, audio]);
+
+  // Auto-detect Свара after a normal showdown. Walks every revealed hand,
+  // finds the top score, and — if two or more seats share that top score —
+  // pins them as Svara participants right away. Score-chips/badges read
+  // the tie via `svaraSeatIds`, so writing it on the same commit as the
+  // reveal makes them paint gold + blink from the first animation frame.
+  // The big SVARA splash on the felt is delayed separately via
+  // `svaraBannerVisible` below. Skips work when the showdown demo already
+  // set `svaraSeatIds` (Svara demo) or no showdown is in flight.
+  useEffect(() => {
+    if (!showdown) return;
+    if (svaraSeatIds.size > 0) return;
+    const scored: Array<{ key: string; score: number }> = [];
+    for (const [key, hand] of Object.entries(seatHands)) {
+      if (!hand || hand.length === 0) continue;
+      scored.push({ key, score: svaraHandScore(hand) });
+    }
+    if (scored.length < 2) return;
+    const top = scored.reduce((m, s) => (s.score > m ? s.score : m), 0);
+    const tied = scored.filter((s) => s.score === top).map((s) => s.key);
+    if (tied.length < 2) return;
+    setSvaraSeatIds(new Set(tied));
+    setSvaraDecision(null);
+    setSvaraPhase('announce');
+    setSvaraBannerVisible(false);
+  }, [showdown, seatHands, svaraSeatIds.size]);
+
+  // Detect the winner after showdown: the single highest scorer.
+  // Skipped when a Svara tie is detected (tied seats get the Svara flow).
+  useEffect(() => {
+    if (!showdown) return;
+    if (svaraSeatIds.size > 0) return;
+    const scored: Array<{ key: string; score: number }> = [];
+    for (const [key, hand] of Object.entries(seatHands)) {
+      if (!hand || hand.length === 0) continue;
+      scored.push({ key, score: svaraHandScore(hand) });
+    }
+    if (scored.length < 2) return;
+    const top = scored.reduce((m, s) => (s.score > m ? s.score : m), 0);
+    const winners = scored.filter((s) => s.score === top);
+    if (winners.length !== 1) return;
+    const winnerId = winners[0].key;
+    // Calculate pot. Prefer the local running tally (antes + bets booked
+    // through `triggerBetFlight`) so the win badge matches the bank
+    // readout that the player just watched tick down to 0. Falls back to a
+    // bare per-seat mock when nothing has been booked locally.
+    const pot =
+      localPotRef.current > 0
+        ? localPotRef.current
+        : seats.filter((s) => !s.empty).length * ANTE_PER_SEAT_DEMO;
+    pendingPotRef.current = pot;
+    // Drives both the chip-clink cascade sound and the total flight
+    // window. `WinnerChipsOverlay` staggers each chip by
+    // `ANTE_CHIP_STAGGER_MS` (same as a bet flight), so the on-screen
+    // sweep finishes ~(chipCount - 1) * stagger after the first chip
+    // leaves.
+    const chipCount = Math.min(
+      MAX_VISIBLE_BET_PILE_SLOTS,
+      Math.max(1, bankChipCountRef.current),
+    );
+    // Sequence: cards open → 800ms → winner gets crown + score blinks →
+    // 1000ms pause → the chips on the table sweep onto the winner in a
+    // staggered stream, with the bank counter ticking down to 0 as each
+    // chip lands → once the last chip arrives, the win amount pops in
+    // above the winner's nameplate.
+    const WINNER_TO_CHIPS_PAUSE_MS = 1000;
+    // Per-chip flight for the winner sweep is intentionally slower than
+    // the bet flight (see WINNER_CHIP_DURATION_MS in
+    // WinnerChipsOverlay.tsx). Total flight window = cluster spread
+    // (~200 ms) + one per-chip flight.
+    const WINNER_CHIP_DURATION_MS = 1800;
+    const WINNER_CLUSTER_SPREAD_MS = 200;
+    const chipFlightTotalMs =
+      WINNER_CLUSTER_SPREAD_MS + WINNER_CHIP_DURATION_MS;
+    const id = setTimeout(() => {
+      setWinnerSeatId(winnerId);
+      if (audioRef.current?.soundRef.current) {
+        const ctx = audioRef.current.ensureCtx();
+        if (ctx) playWinnerSound(ctx);
+      }
+      timerRefs.current.push(
+        setTimeout(() => {
+          setWinnerChipFlight({ seatId: winnerId, chipCount });
+          // Restored to the pre-v137 behavior: one clink per visible
+          // chip, with the stagger spread evenly across the whole
+          // flight window so each clink lands roughly with its chip.
+          // Capped at `ANTE_CHIP_STAGGER_MS` so very small chip
+          // counts don't speed up to a single rattle, and offset
+          // anchored to the ante's `CHIP_SOUND_OFFSET_MS` so the
+          // cascade kicks in at the same relative point in the
+          // flight as the ante chip-toss audio.
+          const winnerSoundStaggerMs =
+            chipCount > 1
+              ? Math.min(
+                  ANTE_CHIP_STAGGER_MS,
+                  Math.floor((chipFlightTotalMs - 300) / (chipCount - 1)),
+                )
+              : 0;
+          for (let i = 0; i < chipCount; i += 1) {
+            timerRefs.current.push(
+              setTimeout(() => {
+                const a = audioRef.current;
+                if (!a?.soundRef.current) return;
+                const ctx = a.ensureCtx();
+                if (!ctx) return;
+                try {
+                  playPokerChipSound(ctx, i);
+                } catch {
+                  // ignore
+                }
+              }, CHIP_SOUND_OFFSET_MS + i * winnerSoundStaggerMs),
+            );
+          }
+          // Retire the overlay and pop the win badge a beat after the
+          // last chip lands. The buffer matches the rAF countdown's
+          // `duration` so the counter hits 0 in the same frame the badge
+          // appears.
+          timerRefs.current.push(
+            setTimeout(() => {
+              setWinnerChipFlight(null);
+              setWinnerAmount(`+$${pendingPotRef.current}`);
+            }, chipFlightTotalMs + 260),
+          );
+        }, WINNER_TO_CHIPS_PAUSE_MS),
+      );
+    }, 800);
+    return () => clearTimeout(id);
+  }, [showdown, seatHands, svaraSeatIds.size, seats]);
+
+  // Reveal the on-table SVARA splash ~1s after a tie is locked in so the
+  // player has a beat to read everyone's cards (and notice the tied chips
+  // already pulsing) before the title takes over the felt.
+  useEffect(() => {
+    if (svaraSeatIds.size < 2) return;
+    if (svaraBannerVisible) return;
+    const id = setTimeout(() => {
+      setSvaraBannerVisible(true);
+      if (audioRef.current?.soundRef.current) {
+        const ctx = audioRef.current.ensureCtx();
+        if (ctx) {
+          try {
+            playSvaraAnnounceSound(ctx);
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }, SVARA_REVEAL_DELAY_MS);
+    return () => clearTimeout(id);
+  }, [svaraSeatIds, svaraBannerVisible]);
+
+  // Flip the banner from announce → choose once the centred SVARA title
+  // has finished its 3 blinks (~3.4s, matching the CSS animation duration
+  // in SvaraBanner.module.css). Driven off `svaraBannerVisible` so the
+  // 3.4s announce window is measured from the moment the splash actually
+  // appears on the felt, not from when the tie was first detected.
+  useEffect(() => {
+    if (!svaraBannerVisible) return;
+    if (svaraPhase !== 'announce') return;
+    const id = setTimeout(() => setSvaraPhase('choose'), 3400);
+    return () => clearTimeout(id);
+  }, [svaraBannerVisible, svaraPhase]);
+
+  const handleSvaraJoin = useCallback(() => {
+    hapticTap();
+    triggerBetFlight(blindAmount);
+    setSvaraDecision('join');
+  }, [blindAmount, triggerBetFlight]);
+
+  const handleSvaraDecline = useCallback(() => {
+    hapticTap();
+    setSvaraDecision('decline');
+  }, []);
+
+  const svaraActive = svaraSeatIds.size >= 2;
+  const meInSvara = !!(mySeatKey && svaraSeatIds.has(mySeatKey));
+
+  const handleOpenCards = useCallback(() => {
+    // Idempotent against a rapid double-tap. Without this guard a fast double-
+    // tap (touch latency on Android can be 50-100ms, well under one React
+    // commit) would fire the reveal sound twice and re-schedule the entry
+    // animation, producing an audible/visual glitch even though the bottom
+    // bar has already swapped to PostOpenButtons.
+    if (cardsOpened) return;
+    hapticTap();
+    setCardsOpened(true);
+    timerRefs.current.push(
+      setTimeout(() => {
+        if (!audio.soundRef.current) return;
+        const ctx = audio.ensureCtx();
+        if (!ctx) return;
+        try {
+          playCardOpenSound(ctx);
+        } catch {}
+      }, HAND_ENTER_DURATION_MS),
+    );
+    if (room?.id !== undefined) {
+      sendGameAction(String(room.id), 'look');
+    }
+  }, [audio, room?.id, cardsOpened]);
+
+  const handleChatPick = useCallback(
+    (item: ChatPickItem) => {
+      showReaction(mySeatId, item);
+    },
+    [mySeatId, showReaction],
+  );
+
+  const handleSetThemePref = useCallback(
+    (next: ThemePref) => {
+      if (next !== 'dark' && next !== 'light' && next !== 'system') return;
+      if (typeof onSetThemePref === 'function') onSetThemePref(next);
+    },
+    [onSetThemePref],
+  );
+
+  const inviteFriend = useCallback(() => {
+    hapticTap();
+    const roomKey = room?.id ?? room?.code ?? '';
+    const displayNumber = room?.num ?? roomKey;
+    const url = roomKey
+      ? `https://t.me/MySvaraBot?startapp=room_${roomKey}`
+      : 'https://t.me/MySvaraBot';
+    const text = displayNumber
+      ? `Я играю в Svara, комната #${displayNumber}. Заходи!`
+      : 'Присоединяйся к Svara — играй в Свару прямо в Telegram';
+    shareToTelegram({ url, text });
+  }, [room?.id, room?.code, room?.num]);
+
+  // Schedule one card-flick sound per dealt card, aligned to the deal timeline.
+  // Driven by `cardsDealing` so the flicks start when the actual card-fly
+  // animation starts (post-ante), not during the chip toss.
+  useEffect(() => {
+    if (!cardsDealing) return undefined;
+    const totalDeals = CARDS_PER_SEAT * activeDealOrder.length;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (let i = 0; i < totalDeals; i++) {
+      const flickTimer = setTimeout(() => {
+        if (!audio.soundRef.current) return;
+        const ctx = audio.ensureCtx();
+        if (!ctx) return;
+        try {
+          playCardFlickSound(ctx, i);
+        } catch {}
+      }, i * DEAL_STAGGER_MS);
+      timers.push(flickTimer);
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [activeDealOrder.length, cardsDealing, audio]);
+
+  useTgBackButton(onExit);
+  useBodyScrollLock();
+
+  const waitingLabel = aloneInRoom
+    ? 'Ждём игроков'
+    : joinedMidDeal || waitForNextRound
+      ? 'Ждём следующий раунд'
+      : null;
+
+  return (
+    <div className={styles.root} style={{ background: t.bg, color: t.text }}>
+      {/* Velvet noise texture overlay (subtle grain so the eyes don't strain) */}
+      <div
+        aria-hidden
+        className={styles.noise}
+        style={{ opacity: t.noiseOpacity, mixBlendMode: t.noiseBlend }}
+      />
+      {/* Soft vignette for depth (velvet feel) */}
+      <div aria-hidden className={styles.vignette} style={{ background: t.vignette }} />
+      <div className={styles.viewport}>
+        <Header
+          roomNum={room.num}
+          onMenu={() => setMenuOpen(true)}
+          theme={theme}
+          t={t}
+          topPadding={headerTopPadding}
+          sidePadding={8}
+        />
+
+        <GameMenu
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          theme={theme}
+          themePref={themePref}
+          onSetThemePref={handleSetThemePref}
+          feltPreset={settings.feltPreset}
+          onSetFeltPreset={settings.setFeltPreset}
+          sound={settings.sound}
+          onToggleSound={settings.toggleSound}
+          vibration={settings.vibration}
+          onToggleVibration={settings.toggleVibration}
+
+          onShowdown={spectator ? undefined : handleShowdown}
+          onSvaraDemo={spectator ? undefined : handleSvaraDemo}
+          onExit={() => {
+            setMenuOpen(false);
+            setConfirmExit(true);
+          }}
+          t={t}
+        />
+
+        <ConfirmExit
+          open={confirmExit}
+          onCancel={() => setConfirmExit(false)}
+          onConfirm={() => {
+            setConfirmExit(false);
+            onExit();
+          }}
+          theme={theme}
+          t={t}
+        />
+
+        {/* Felt zone — pill table.
+            On Android the available area is shorter than the table's
+            maxHeight, so the table fills 100% of the available height.
+            We trade ~20px of top padding for bottom padding so the whole
+            table (and the absolutely-positioned seats inside it) shifts
+            upward without changing the overall table height. iOS layout
+            is unchanged. */}
+        <div
+          className={`${styles.feltZone} ${isAndroidTelegram ? styles.feltZoneAndroid : ''}`}
+        >
+          <div
+            className={styles.tableHolder}
+            style={{
+              maxHeight: isAndroidTelegram ? TABLE_MAX_HEIGHT.android : TABLE_MAX_HEIGHT.default,
+            }}
+          >
+            <Table
+              feltInner={settings.felt.feltInner}
+              feltOuter={settings.felt.feltOuter}
+              dim={showdown}
+            />
+            <PotView amount={displayedPot} rakePercent={rakePercent} waitingLabel={waitingLabel} />
+
+            {anteRound > 0 && (
+              <AnteOverlay
+                key={anteRound}
+                seats={seats}
+              />
+            )}
+
+            {cardsDealing && activeDealOrder.length > 0 && (
+              <CenterDeck totalDeals={CARDS_PER_SEAT * activeDealOrder.length} />
+            )}
+
+            {betFlights.map((flight) => (
+              <BetOverlay
+                key={flight.id}
+                seatId={flight.seatId}
+                chipCount={flight.chipCount}
+                slotStart={flight.slotStart}
+                slotModulo={MAX_VISIBLE_BET_PILE_SLOTS}
+              />
+            ))}
+
+            {winnerChipFlight && (
+              <WinnerChipsOverlay seatId={winnerChipFlight.seatId} />
+            )}
+
+            <SeatsLayer
+              seats={seats as SeatsLayerSeat[]}
+              getDisplayPos={getDisplayPos}
+              reactions={reactions}
+              dealing={cardsDealing}
+              spectator={spectator}
+              onInvite={inviteFriend}
+              onTakeSeat={handleTakeSeat}
+              activeDealOrder={activeDealOrder}
+              hideInviteArrow={joinedMidDeal}
+              isJoinedMidDeal={joinedMidDeal}
+              myHand={
+                cardsOpened && mySeatKey && !foldingSeats[mySeatKey] ? myHand : undefined
+              }
+              seatHands={showdown ? seatHands : undefined}
+              svaraSeatIds={svaraActive ? svaraSeatIds : undefined}
+              activeTurnSeatId={activeTurnSeatId}
+              turnTimerProgress={turnTimerProgress}
+              myAutoFolded={myAutoFolded}
+              winnerSeatId={winnerSeatId}
+              winnerAmount={winnerAmount}
+            />
+
+            {Object.entries(foldingSeats).map(([seatId, entry]) => (
+              <FoldingSeatOverlay key={seatId} displayPos={entry.displayPos} />
+            ))}
+
+            {svaraActive && svaraBannerVisible && (
+              <SvaraBanner
+                phase={svaraPhase}
+                myDecision={svaraDecision}
+                canDecide={meInSvara && !spectator}
+                joinCost={blindAmount}
+                onJoin={handleSvaraJoin}
+                onDecline={handleSvaraDecline}
+              />
+            )}
+          </div>
+        </div>
+
+        <GameRoomKeyframes />
+
+        {!spectator && (
+          <ChatButton
+            onClick={() => setChatOpen((v) => !v)}
+            bottom={CHAT_BUTTON_BOTTOM}
+            theme={theme}
+            variant={chatVariant}
+          />
+        )}
+
+        {!spectator && (
+          <ChatPanel
+            open={chatOpen}
+            onClose={() => setChatOpen(false)}
+            onPick={handleChatPick}
+            t={t}
+          />
+        )}
+
+        {spectator ? (
+          <SpectatorBar />
+        ) : cardsOpened ? (
+          <PostOpenButtons
+            callAmount={callAmount}
+            onPass={handlePass}
+            onCall={handleCall}
+            onRaise={handleRaise}
+          />
+        ) : dealingDone && !myAutoFolded ? (
+          <ActionButtons
+            blindAmount={blindAmount}
+            onOpen={handleOpenCards}
+            onBlind={handleBlindBet}
+          />
+        ) : (
+          <div style={{ height: 72, flexShrink: 0 }} />
+        )}
+
+        <RaiseSheet
+          open={raiseOpen}
+          currentBet={Math.round(blindAmount / 2)}
+          minRaise={blindAmount}
+          maxRaise={blindAmount * 10}
+          onClose={() => setRaiseOpen(false)}
+          onConfirm={handleRaiseConfirm}
+        />
+      </div>
+    </div>
+  );
+}
+
+// Keep TABLE_PRESETS export shape stable for any external consumers.
+export { TABLE_PRESETS };

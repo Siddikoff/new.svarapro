@@ -1,0 +1,100 @@
+/* RoomDetailsModal — static styles extracted from inline. */
+
+.pwHead {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.pwIconBox {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--tint-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 12px;
+}
+
+.pwTitle {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.pwSub {
+  font-size: 13px;
+  color: var(--hint);
+}
+
+.infoTitle {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+.infoNum {
+  font-size: 13px;
+  color: var(--hint);
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.infoCard {
+  background: var(--input);
+  border-radius: 12px;
+  padding: 14px 12px;
+  margin-bottom: 20px;
+}
+
+.infoRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.infoRowLabel {
+  color: var(--hint);
+}
+
+.infoRowValue {
+  font-weight: 700;
+}
+
+.balLabel {
+  font-size: 13px;
+  color: var(--hint);
+  margin-bottom: 8px;
+}
+
+.balCard {
+  background: var(--input);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.balErr {
+  font-size: 12px;
+  color: #e05c5c;
+  margin-bottom: 12px;
+  padding-left: 4px;
+}
+
+.balSpacer {
+  margin-bottom: 20px;
+}
+
+.specCard {
+  background: var(--bg3);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--hint);
+  margin-bottom: 20px;
+  line-height: 1.5;
+}

@@ -1,0 +1,271 @@
+/* Shared styles for the profile screen + its sheets.
+ * Visuals match the inline-styled originals 1:1. */
+
+.screen {
+  padding-bottom: 12px;
+  padding-top: 12px;
+}
+
+.statsRow {
+  display: flex;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.statCard {
+  background: var(--bg2);
+  border-radius: 12px;
+  padding: 14px;
+  flex: 1;
+  text-align: center;
+}
+
+.statValue {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.statLabel {
+  font-size: 11px;
+  color: var(--hint);
+  margin-top: 2px;
+}
+
+.menu {
+  padding: 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rowCard {
+  background: var(--bg2);
+  border-radius: 12px;
+  padding: 14px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rowIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.rowLabel {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.rowSubtext {
+  font-size: 14px;
+  color: var(--hint);
+  margin-right: 10px;
+}
+
+.copyChip {
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  background: var(--bg3);
+  color: var(--text);
+  font-family: inherit;
+}
+
+.copyChipActive {
+  background: var(--tint-success);
+  color: #4dcd5e;
+}
+
+.menuRow {
+  background: var(--bg2);
+  padding: 14px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.menuRowTop {
+  border-radius: 12px 12px 0 0;
+}
+
+.menuRowDefault {
+  border-radius: 12px;
+}
+
+.menuChevron {
+  transition: transform 0.2s;
+}
+
+.menuChevronOpen {
+  transform: rotate(90deg);
+}
+
+.historyPanel {
+  background: var(--bg2);
+  border-radius: 0 0 12px 12px;
+  border-top: 1px solid var(--div);
+  padding: 12px 12px 10px;
+}
+
+.historyTabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-left: 2px;
+}
+
+.historyTab {
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1.5px solid var(--div);
+  background: transparent;
+  color: var(--hint);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.historyTabActive {
+  border-color: #2481cc;
+  background: var(--bg3);
+  color: var(--text);
+}
+
+.historyList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.txRow {
+  background: var(--bg);
+  border-radius: 12px;
+  padding: 12px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.txIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.txBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.txAmountRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.txAmount {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.txBadge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.txMeta {
+  font-size: 11px;
+  color: var(--hint);
+  margin-top: 3px;
+}
+
+.toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #4dcd5e;
+  color: #fff;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 999;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: calc(100vw - 24px);
+}
+
+.walletSection {
+  margin-top: 4px;
+}
+
+.walletSectionLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+  padding-left: 2px;
+}
+
+.walletAddressText {
+  font-size: 11px;
+  color: var(--hint);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.walletPlaceholder {
+  font-size: 11px;
+  color: var(--hint);
+  margin-top: 2px;
+}
+
+.sheetCloseAnchor {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+}
+
+.sheetTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+.sheetSubtitle {
+  font-size: 12px;
+  color: var(--hint);
+  text-align: center;
+  margin-bottom: 16px;
+}

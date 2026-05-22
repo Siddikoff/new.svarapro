@@ -1,0 +1,72 @@
+/* LobbyFilterSheet — static styles extracted from inline. */
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.resetBtn {
+  background: none;
+  border: none;
+  /* `--tint-blue` is a low-contrast surface tint and reads as nearly
+   * invisible against the sheet background. The reset action is a
+   * secondary link — render it in the accent so it has the same
+   * "tap me" affordance as other inline links/buttons. */
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sectionLabel {
+  font-size: 12px;
+  color: var(--hint);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.rangeRow {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.seatRow {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.rangeValue {
+  font-size: 12px;
+  color: var(--hint);
+}
+
+.sliderWrap {
+  margin-bottom: 18px;
+}
+
+.seatRowLabel {
+  margin-bottom: 8px;
+}
+
+.footer {
+  margin-top: 4px;
+}
+
+.seatBtn {
+  flex: 1;
+  padding: 9px 10px;
+  border-radius: 9px;
+  font-size: 13px;
+  cursor: pointer;
+}

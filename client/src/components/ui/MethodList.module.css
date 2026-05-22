@@ -1,0 +1,53 @@
+/* MethodList — static styles extracted from inline. */
+
+.row {
+  border-radius: 12px;
+  padding: 14px 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.iconBox {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.info {
+  flex: 1;
+}
+
+.label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sub {
+  font-size: 12px;
+  color: var(--hint);
+}
+
+.radio {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.radioDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+}

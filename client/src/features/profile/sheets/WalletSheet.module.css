@@ -1,0 +1,122 @@
+/* WalletSheet — static styles extracted from inline. */
+
+.successWrap {
+  text-align: center;
+  padding: 24px 0 18px;
+}
+
+.successCircle {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4dcd5e, #2a9e40);
+  margin: 0 auto 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation:
+    wal_pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    wal_pulse 1.4s ease-out 0.5s 2;
+}
+
+.successCheck {
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  animation: wal_check 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.35s forwards;
+}
+
+.successTitle {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.successSub {
+  font-size: 13px;
+  color: var(--hint);
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.sub {
+  font-size: 13px;
+  color: var(--hint);
+  margin-bottom: 20px;
+}
+
+.networkRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.networkBtn {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.warn {
+  font-size: 11px;
+  color: var(--hint);
+  margin-bottom: 20px;
+  padding-left: 4px;
+}
+
+.removeBtn {
+  margin-top: 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: #e05c5c;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px 0;
+  font-family: inherit;
+}
+
+@keyframes wal_pop {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes wal_check {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes wal_ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes wal_pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(77, 205, 94, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 18px rgba(77, 205, 94, 0);
+  }
+}

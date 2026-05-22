@@ -1,0 +1,36 @@
+/* NavigationBar — static styles extracted from inline. */
+
+.bar {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  background: var(--bg2);
+  border-top: 1px solid var(--div);
+  display: flex;
+  align-items: center;
+  padding-top: 6px;
+  padding-bottom: max(env(safe-area-inset-bottom), 6px);
+}
+
+.button {
+  flex: 1;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 0;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.labelActive {
+  font-weight: 600;
+}

@@ -1,0 +1,87 @@
+/* Actions — static styles extracted from inline. */
+
+.barSlot {
+  height: 72px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 5;
+}
+
+.barInner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px max(calc(env(safe-area-inset-bottom) + 10px), 24px);
+  box-sizing: border-box;
+}
+.barInner.gap10 {
+  gap: 10px;
+}
+
+.spectatorPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(20, 22, 28, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3);
+  align-self: center;
+}
+
+.actionBtn {
+  width: calc((100% - 20px) / 3);
+  max-width: 146px;
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  padding: 6px 0;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1.1;
+}
+
+.iconRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+}
+.iconRow.big {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.btnLabel {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.activeBetChip {
+  position: absolute;
+  right: 17%;
+  top: 52%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  z-index: 2;
+}
+
+.activeBetAmount {
+  font-size: 12px;
+  color: #fff;
+  font-weight: 700;
+}

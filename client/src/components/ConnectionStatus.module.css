@@ -1,0 +1,185 @@
+/* ConnectionStatus — static styles extracted from inline. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: svrConnFade 0.2s ease-out both;
+}
+
+.card {
+  width: 100%;
+  max-width: 320px;
+  padding: 28px 22px 22px;
+  text-align: center;
+  color: var(--text);
+  background: var(--bg2);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+  animation: svrConnPop 0.3s cubic-bezier(0.22, 0.94, 0.36, 1) both;
+}
+
+.iconCircle {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: var(--tint-red);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.title {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.sub {
+  font-size: 13.5px;
+  color: var(--hint);
+  line-height: 1.5;
+  margin-bottom: 18px;
+  max-width: 260px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.statusRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.statusDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  animation: svrConnPulseDot 1.3s ease-in-out infinite;
+}
+
+.statusText {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.dotsBox {
+  display: inline-flex;
+  margin-left: 2px;
+  width: 14px;
+  justify-content: space-between;
+}
+
+@keyframes svrConnFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes svrConnPop {
+  0% {
+    transform: translateY(14px) scale(0.94);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(0) scale(1.01);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+@keyframes svrWifiArcFade {
+  0%,
+  100% {
+    opacity: 0.18;
+  }
+  35% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.18;
+  }
+}
+@keyframes svrWifiSlash {
+  0% {
+    stroke-dashoffset: 56;
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  60% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+@keyframes svrConnDot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+@keyframes svrConnPulseDot {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.55);
+    opacity: 0.45;
+  }
+}
+:global(.svr-wifi-arc) {
+  transform-box: fill-box;
+  transform-origin: 32px 50px;
+}
+:global(.svr-wifi-arc-1) {
+  animation: svrWifiArcFade 2s ease-in-out infinite;
+  animation-delay: 0s;
+}
+:global(.svr-wifi-arc-2) {
+  animation: svrWifiArcFade 2s ease-in-out infinite;
+  animation-delay: 0.22s;
+}
+:global(.svr-wifi-arc-3) {
+  animation: svrWifiArcFade 2s ease-in-out infinite;
+  animation-delay: 0.44s;
+}
+:global(.svr-wifi-slash) {
+  stroke-dasharray: 56;
+  stroke-dashoffset: 56;
+  animation: svrWifiSlash 1.6s cubic-bezier(0.45, 0.05, 0.55, 0.95) 0.15s forwards;
+}
+:global(.svr-conn-dot) {
+  display: inline-block;
+  animation: svrConnDot 1.4s ease-in-out infinite;
+}
+:global(.svr-conn-dot):nth-child(2) {
+  animation-delay: 0.18s;
+}
+:global(.svr-conn-dot):nth-child(3) {
+  animation-delay: 0.36s;
+}

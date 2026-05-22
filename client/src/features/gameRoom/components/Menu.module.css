@@ -1,0 +1,189 @@
+/* Menu (ConfirmExit + GameMenu + Header) — static styles extracted from inline. */
+
+.confirmOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 10002;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 28px;
+  animation: svrFade 0.22s ease-out;
+}
+
+.confirmCard {
+  border-radius: 16px;
+  width: 100%;
+  max-width: 320px;
+  padding: 22px 22px 16px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  animation: svrPop 0.28s cubic-bezier(0.22, 1.4, 0.36, 1);
+  text-align: center;
+}
+
+.confirmIcon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  margin: 0 auto 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirmTitle {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.confirmDescr {
+  font-size: 13px;
+  margin-bottom: 20px;
+  line-height: 1.4;
+}
+
+.confirmBtnRow {
+  display: flex;
+  gap: 10px;
+}
+
+.confirmBtn {
+  flex: 1;
+  border: none;
+  border-radius: 10px;
+  padding: 11px 0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.confirmBtn.danger {
+  background: #e23b3b;
+  color: #fff;
+  font-weight: 700;
+}
+
+.toggle {
+  width: 38px;
+  height: 22px;
+  border-radius: 11px;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.toggleKnob {
+  position: absolute;
+  top: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.2s;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+}
+
+.rowIcon {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.rowLabel {
+  flex: 1;
+  font-size: 14px;
+}
+
+.presetRow {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.presetSwatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+}
+
+.menuOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 10001;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 52px 12px 0;
+}
+
+.menuCard {
+  min-width: 240px;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.menuHead {
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 6;
+}
+
+.roomBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  margin-left: 0;
+  border-radius: 8px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+.roomBadgeText {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.menuBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

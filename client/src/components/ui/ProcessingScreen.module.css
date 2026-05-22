@@ -1,0 +1,59 @@
+/* ProcessingScreen — static styles extracted from inline. */
+
+.root {
+  text-align: center;
+  padding: 32px 0 28px;
+}
+
+.spinnerWrap {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 22px;
+}
+
+.spinner {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid var(--div);
+  border-top-color: var(--tint-blue);
+  animation: dep_spin 0.9s linear infinite;
+}
+
+.iconWrap {
+  position: absolute;
+  inset: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: dep_pulse 1.6s ease-in-out infinite;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.sub {
+  font-size: 13px;
+  color: var(--hint);
+}
+
+@keyframes dep_spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes dep_pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.92);
+    opacity: 0.7;
+  }
+}

@@ -1,1 +1,0 @@
-export type WithNull<T = unknown> = T | null; 
