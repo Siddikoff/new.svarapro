@@ -47,7 +47,7 @@ import { playCardFlickSound, playCardOpenSound, playPokerChipSound, playSvaraAnn
 import styles from './GameRoom.module.css';
 import { sendChatMessage, sendGameAction, subscribeToChat, subscribeToGameState } from './services/gameSocket';
 import { hapticTap } from './services/haptics';
-import { getTelegramWebApp, shareToTelegram } from './services/telegram';
+import { getTelegramUserId, getTelegramWebApp, shareToTelegram } from './services/telegram';
 import { useAuthStore } from './store/authStore';
 import { useGameStore } from './store/gameStore';
 
@@ -177,24 +177,86 @@ export default function GameRoom({
     };
   }, [authUser]);
 
-  // Map server seat snapshots (keyed by canonical `seatId` 0..N-1) onto
-  // the table positions. Seat 0 = my position (`bottom`); seats 1..5 go
-  // clockwise around the felt. This lives in GameRoom rather than the
-  // hook so the hook stays pure / testable.
-  const SEATID_TO_POS: Record<string, SeatAnchorPos> = useMemo(
-    () => ({
-      '0': 'bottom',
-      '1': 'right-down',
-      '2': 'right-up',
-      '3': 'top',
-      '4': 'left-up',
-      '5': 'left-down',
-    }),
+  // Clockwise order around the felt starting from the local player's seat.
+  // Index 0 is the bottom (where the local user always sits — the table
+  // rotates around them so every player sees themselves at the bottom).
+  // The remaining anchors run clockwise: right-down → right-up → top →
+  // left-up → left-down.
+  const ANCHOR_ORDER: SeatAnchorPos[] = useMemo(
+    () => ['bottom', 'right-down', 'right-up', 'top', 'left-up', 'left-down'],
     [],
   );
+
+  // Telegram identity of the local user (or `null` outside of the Telegram
+  // shell / preview mode). Recomputed via a state subscription so we react
+  // when the session bootstraps after the first render.
+  const selfTelegramId = useMemo(() => {
+    const tg = getTelegramUserId();
+    return tg !== null ? String(tg) : null;
+  }, []);
+
+  // Server-side position assigned to the local player. We find it by
+  // walking `realSeats` for an entry whose `telegramId` matches our own.
+  // Server positions are 1..6 (per `useAutoSitDown`); we treat anything
+  // outside that range as "unknown" and fall back to no rotation so the
+  // demo / spectator views keep working.
+  //
+  // NOTE: deliberately named `myServerSeatId` to avoid shadowing the
+  // separate `mySeatId` further down — that one is the local 1..6 id used
+  // by the UI layer (matches `SEATS_DEFAULT[*].id`), whereas this one is
+  // the server-side position string ("1".. "6").
+  const myServerSeatId = useMemo<string | null>(() => {
+    if (!selfTelegramId) return null;
+    for (const [seatId, seat] of Object.entries(realSeats ?? {})) {
+      if (seat.telegramId && String(seat.telegramId) === selfTelegramId) {
+        return seatId;
+      }
+    }
+    return null;
+  }, [realSeats, selfTelegramId]);
+
+  // Build the dynamic server-position → table-anchor mapping rotated so
+  // that the local player's server position lands at `bottom`. Without
+  // this rotation, every client would see the same hard-coded mapping
+  // and a player seated at server position 2 would render themselves
+  // at `right-up` instead of at the bottom of the table.
+  const SEATID_TO_POS: Record<string, SeatAnchorPos> = useMemo(() => {
+    const n = ANCHOR_ORDER.length;
+    // Numeric server-position offset that lands my seat at index 0
+    // (`bottom`). When we don't know my server position yet we use 0
+    // so the layout matches the pre-rotation defaults.
+    const myPositionNum = myServerSeatId !== null ? Number(myServerSeatId) : NaN;
+    const offset = Number.isFinite(myPositionNum) ? myPositionNum : 0;
+    const map: Record<string, SeatAnchorPos> = {};
+    // Server positions are integers (typically 1..6, but the adapter
+    // doesn't constrain the range). We map every position seen in the
+    // current snapshot plus the canonical 0..6 range to cover defaults.
+    const positions = new Set<number>();
+    for (const seatId of Object.keys(realSeats ?? {})) {
+      const num = Number(seatId);
+      if (Number.isFinite(num)) positions.add(num);
+    }
+    for (let p = 0; p <= n; p += 1) positions.add(p);
+    for (const p of positions) {
+      const relIdx = ((p - offset) % n + n) % n;
+      map[String(p)] = ANCHOR_ORDER[relIdx];
+    }
+    return map;
+  }, [ANCHOR_ORDER, realSeats, myServerSeatId]);
+
+  // Paint OTHER players' data onto their rotated anchor. The local
+  // player's overlay is applied separately via `mySeatOverlay` (always
+  // `bottom`), so we explicitly skip our own seat to avoid rendering
+  // ourselves in two places at once.
   const otherSeatsOverlay = useMemo(() => {
     const map: Partial<Record<SeatAnchorPos, { name?: string; stack?: string; photo?: string | number }>> = {};
     for (const [seatId, seat] of Object.entries(realSeats ?? {})) {
+      // Skip the local player — their data is overlaid on `bottom` by
+      // `mySeatOverlay` further up. Comparing by telegramId is the
+      // canonical check; falling back to seatId === myServerSeatId covers
+      // the brief window before `myServerSeatId` resolves.
+      if (selfTelegramId && seat.telegramId && String(seat.telegramId) === selfTelegramId) continue;
+      if (myServerSeatId !== null && seatId === myServerSeatId) continue;
       const pos = SEATID_TO_POS[seatId];
       if (!pos || pos === 'bottom') continue;
       map[pos] = {
@@ -204,7 +266,7 @@ export default function GameRoom({
       };
     }
     return map;
-  }, [realSeats, SEATID_TO_POS]);
+  }, [realSeats, SEATID_TO_POS, selfTelegramId, myServerSeatId]);
 
   const {
     seats,
@@ -452,6 +514,10 @@ export default function GameRoom({
   // Audio ref so the timer-start effect can play sounds without
   // depending on the `audio` value (defined later via useChatReactions).
   const audioRef = useRef<{ ensureCtx: () => AudioContext | null; soundRef: MutableRefObject<boolean> } | null>(null);
+  // Tracks which turn we've already chimed for so React StrictMode's
+  // double-invocation of effects in development can't fire the
+  // turn-start chord twice for the same `activeTurnSeatId`.
+  const lastTurnSoundIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!activeTurnSeatId) return;
@@ -459,11 +525,16 @@ export default function GameRoom({
     turnStartRef.current = performance.now();
     setTurnTimerProgress(1);
 
-    // Sound + vibration on turn start.
-    hapticTap();
-    if (audioRef.current?.soundRef.current) {
-      const ctx = audioRef.current.ensureCtx();
-      if (ctx) playTurnStartSound(ctx);
+    // Sound + vibration on turn start. Guard with a ref so the chord only
+    // plays once per turn even if the effect runs twice (StrictMode, or
+    // synthetic re-renders that don't change `activeTurnSeatId`).
+    if (lastTurnSoundIdRef.current !== activeTurnSeatId) {
+      lastTurnSoundIdRef.current = activeTurnSeatId;
+      hapticTap();
+      if (audioRef.current?.soundRef.current) {
+        const ctx = audioRef.current.ensureCtx();
+        if (ctx) playTurnStartSound(ctx);
+      }
     }
 
     const fireAutoPass = () => {
