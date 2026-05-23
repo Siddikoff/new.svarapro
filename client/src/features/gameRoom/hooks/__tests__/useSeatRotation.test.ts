@@ -183,6 +183,89 @@ describe('useSeatRotation', () => {
     });
   });
 
+  // When the realtime slice is in charge, the legacy local setTimeout must
+  // step aside — dealing follows the wire. Passing `dealingFromServer=true`
+  // immediately flips dealing on without waiting for DEAL_START_DELAY_MS,
+  // and `=false` keeps it off no matter how much wall-clock time elapses.
+  describe('dealingFromServer — wire-driven dealing flag', () => {
+    it('starts dealing immediately when dealingFromServer=true (no setTimeout wait)', () => {
+      const { result } = renderHook(() =>
+        useSeatRotation({
+          room: DEFAULT_ROOM,
+          spectator: false,
+          waitForNextRound: false,
+          dealingFromServer: true,
+        }),
+      );
+      // Note: NO timer advance — server says deal, dealing flips on.
+      expect(result.current.dealing).toBe(true);
+    });
+
+    it('keeps dealing=false when dealingFromServer=false, regardless of elapsed time', () => {
+      const { result } = renderHook(() =>
+        useSeatRotation({
+          room: DEFAULT_ROOM,
+          spectator: false,
+          waitForNextRound: false,
+          dealingFromServer: false,
+        }),
+      );
+      act(() => {
+        vi.advanceTimersByTime(DEAL_START_DELAY_MS * 5);
+      });
+      expect(result.current.dealing).toBe(false);
+    });
+
+    it('falls back to the local setTimeout when dealingFromServer is undefined', () => {
+      const { result } = renderHook(() =>
+        useSeatRotation({
+          room: DEFAULT_ROOM,
+          spectator: false,
+          waitForNextRound: false,
+        }),
+      );
+      expect(result.current.dealing).toBe(false);
+      act(() => {
+        vi.advanceTimersByTime(DEAL_START_DELAY_MS + 10);
+      });
+      expect(result.current.dealing).toBe(true);
+    });
+
+    it('reacts to dealingFromServer transitions (deal → idle → deal)', () => {
+      const { rerender, result } = renderHook(
+        ({ dealingFromServer }: { dealingFromServer: boolean }) =>
+          useSeatRotation({
+            room: DEFAULT_ROOM,
+            spectator: false,
+            waitForNextRound: false,
+            dealingFromServer,
+          }),
+        { initialProps: { dealingFromServer: true } },
+      );
+      expect(result.current.dealing).toBe(true);
+
+      rerender({ dealingFromServer: false });
+      expect(result.current.dealing).toBe(false);
+
+      rerender({ dealingFromServer: true });
+      expect(result.current.dealing).toBe(true);
+    });
+
+    it('respects waitForNextRound even when dealingFromServer=true', () => {
+      const { result } = renderHook(() =>
+        useSeatRotation({
+          room: DEFAULT_ROOM,
+          spectator: true,
+          waitForNextRound: true,
+          dealingFromServer: true,
+        }),
+      );
+      // A late-joining spectator should not see the cards land mid-deal
+      // even if the server happens to be in the ante phase right now.
+      expect(result.current.dealing).toBe(false);
+    });
+  });
+
   describe('getDisplayPos', () => {
     it('is the identity when chosenPos is null', () => {
       const { result } = renderHook(() =>

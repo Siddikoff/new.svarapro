@@ -55,6 +55,18 @@ export interface UseSeatRotationOptions {
   mySeat?: SeatOverlayData | null;
   /** Real other-player snapshots keyed by canonical position. */
   otherSeats?: Partial<Record<SeatAnchorPos, SeatOverlayData>>;
+  /**
+   * Server-driven dealing flag. When defined (true | false), it bypasses
+   * the local `DEAL_START_DELAY_MS` setTimeout and drives `dealing` from
+   * the wire (the svarapro NestJS gateway pushes `status === 'ante'` for
+   * the deal phase, which the gameSocket bridge translates to
+   * `phase === 'dealing'`).
+   *
+   * Leave `undefined` to keep the legacy local trigger — useful for tests,
+   * mock/spectator decks, or any caller that hasn't wired the realtime
+   * slice yet.
+   */
+  dealingFromServer?: boolean;
 }
 
 export interface UseSeatRotationResult {
@@ -79,6 +91,7 @@ export function useSeatRotation({
   onTakeSeat,
   mySeat,
   otherSeats,
+  dealingFromServer,
 }: UseSeatRotationOptions): UseSeatRotationResult {
   const [chosenPos, setChosenPos] = useState<SeatAnchorPos | null>(null);
   const [joinedMidDeal, setJoinedMidDeal] = useState<boolean>(false);
@@ -240,13 +253,19 @@ export function useSeatRotation({
   }, [spectator, chosenPos, joinedMidDeal, baseSeats, emptyPositionsBase, mySeat, otherSeats]);
 
   useEffect(() => {
+    // Server-driven mode: phase === 'dealing' → dealing = true; anything
+    // else → false. No local timer; the wire is the only source of truth.
+    if (dealingFromServer !== undefined) {
+      setDealing(dealingFromServer && !waitForNextRound && !aloneInRoom);
+      return undefined;
+    }
     if (waitForNextRound || aloneInRoom) {
       setDealing(false);
       return undefined;
     }
     const t = setTimeout(() => setDealing(true), DEAL_START_DELAY_MS);
     return () => clearTimeout(t);
-  }, [waitForNextRound, aloneInRoom, room?.id]);
+  }, [dealingFromServer, waitForNextRound, aloneInRoom, room?.id]);
 
   const handleTakeSeat = useCallback(
     (seat: RotationSeat | null): void => {
