@@ -161,6 +161,14 @@ export default function GameRoom({
   // instead of the positional placeholder from `SEATS_DEFAULT`.
   const authUser = useAuthStore((state) => state.user);
   const realSeats = useGameStore((state) => state.seats);
+  // Canonical phase / round metadata pushed by the server (translated by
+  // `svaraAdapter.ts` → `gameSocket.handleSnapshot` → `applySnapshot`).
+  // `version` doubles as a "have we received any snapshot yet?" flag —
+  // the realtime slice starts at 0 and the bridge mints version 1 on the
+  // first applied snapshot, so `version > 0` means the wire is in charge.
+  const serverPhase = useGameStore((state) => state.phase);
+  const serverStateVersion = useGameStore((state) => state.version);
+  const serverDriven = serverStateVersion > 0;
 
   const mySeatOverlay = useMemo(() => {
     if (!authUser) return null;
@@ -268,6 +276,12 @@ export default function GameRoom({
     return map;
   }, [realSeats, SEATID_TO_POS, selfTelegramId, myServerSeatId]);
 
+  // When the wire is the source of truth, deal animation must follow
+  // server `status === 'ante'` (mapped to `phase === 'dealing'`) rather
+  // than the legacy `DEAL_START_DELAY_MS` setTimeout. `undefined` keeps
+  // the local timer alive for tests / no-server demo flows.
+  const dealingFromServer = serverDriven ? serverPhase === 'dealing' : undefined;
+
   const {
     seats,
     getDisplayPos,
@@ -283,6 +297,7 @@ export default function GameRoom({
     onTakeSeat,
     mySeat: mySeatOverlay,
     otherSeats: otherSeatsOverlay,
+    dealingFromServer,
   });
 
   const settings = useGameSettings();
@@ -857,24 +872,67 @@ export default function GameRoom({
   const { reactions, showReaction, audio } = useChatReactions(settings.sound);
   audioRef.current = audio;
 
-  // Showdown demo — flip every seat's cards face-up simultaneously. Deals a
-  // random 3-card Свара hand to every non-me seat, reuses `myHand` for the
-  // me-seat so the player's own cards don't change at the reveal, and marks
-  // the round as `showdown` so the action bar collapses to the spectator
-  // view (showdown ends the betting phase). Wiring this to a backend later
-  // is a one-line swap — replace the local `dealHand()` with the hands
-  // returned in ROUND_RESULT.
+  // Per-local-seat hand pinned by the server. Each `realSeats` entry is
+  // keyed by the server position ("1".. "6"); we walk the rotated
+  // `SEATID_TO_POS` map to find the matching display anchor and resolve
+  // the local seat sitting at that anchor. The result is a
+  // `Record<localSeatId, Card[]>` that handleShowdown / the dealing
+  // effect can prefer over the mock `dealHand()` output.
+  const serverHandsBySeatId = useMemo<Record<string, Card[]>>(() => {
+    if (!serverDriven) return {};
+    const map: Record<string, Card[]> = {};
+    for (const [serverPosId, serverSeat] of Object.entries(realSeats ?? {})) {
+      if (!serverSeat.hand || serverSeat.hand.length === 0) continue;
+      const anchor = SEATID_TO_POS[serverPosId];
+      if (!anchor) continue;
+      const localSeat = seats.find((s) => s.pos === anchor);
+      if (localSeat?.id == null) continue;
+      map[String(localSeat.id)] = serverSeat.hand as Card[];
+    }
+    return map;
+  }, [serverDriven, realSeats, SEATID_TO_POS, seats]);
+
+  // The local player's hand as pushed by the server (only present for the
+  // receiving player's own seat — svarapro's protocol intentionally omits
+  // other players' cards until showdown).
+  const serverMyHand = useMemo<Card[] | null>(() => {
+    if (!serverDriven || !myServerSeatId) return null;
+    const serverSeat = realSeats?.[myServerSeatId];
+    if (!serverSeat?.hand || serverSeat.hand.length === 0) return null;
+    return serverSeat.hand as Card[];
+  }, [serverDriven, myServerSeatId, realSeats]);
+
+  // Overlay the server hand on top of the locally-dealt placeholder as
+  // soon as the wire ships it. The placeholder set by the deal-effect
+  // keeps the open-hand fan looking right during the dealing animation
+  // (before the server-side `cards` field is populated for our seat);
+  // once the real hand arrives, this swaps it in without re-triggering
+  // any animation — `myHand` only feeds the post-open render path.
+  useEffect(() => {
+    if (!serverMyHand) return;
+    setMyHand(serverMyHand);
+  }, [serverMyHand]);
+
+  // Showdown — flip every seat's cards face-up simultaneously. When the
+  // server is driving the round, prefer per-seat `hand` arrays from the
+  // realtime slice (populated by `svaraAdapter.adaptPlayerToSeat` when
+  // `status === 'showdown'` flips the reveal flag for everyone). Falls
+  // back to the locally-dealt placeholder from the deal-effect, or a
+  // fresh `dealHand()` for late joiners, so the demo / no-server flow
+  // keeps working.
   const handleShowdown = useCallback(() => {
     hapticTap();
     setMenuOpen(false);
-    // Hands are already pinned on every seat from the deal effect above —
-    // showdown just flips them face-up in place. If a seat joined after the
-    // deal and has no entry yet, deal one on the fly so they still flip.
     setSeatHands((prev) => {
       const next: Record<string, Card[]> = { ...prev };
       for (const s of seats) {
         if (s.empty || s.id == null) continue;
         const key = String(s.id);
+        // Server hand always wins — it's the authoritative reveal data.
+        if (serverHandsBySeatId[key]) {
+          next[key] = serverHandsBySeatId[key];
+          continue;
+        }
         if (next[key]) continue;
         next[key] = s.me ? myHand : dealHand();
       }
@@ -894,7 +952,20 @@ export default function GameRoom({
         } catch {}
       }, HAND_ENTER_DURATION_MS),
     );
-  }, [seats, myHand, audio]);
+  }, [seats, myHand, audio, serverHandsBySeatId]);
+
+  // Auto-fire the showdown when the server transitions into the showdown
+  // phase (svarapro `status === 'showdown' | 'finished' | 'svara' |
+  // 'svara_pending'` — all of which the adapter maps to `'showdown'`).
+  // Without this, the action bar would stay in betting mode forever and
+  // the only way to flip cards face-up would be the dev menu's «Vskryt'
+  // vsekh (demo)» entry.
+  useEffect(() => {
+    if (!serverDriven) return;
+    if (serverPhase !== 'showdown') return;
+    if (showdown) return;
+    handleShowdown();
+  }, [serverDriven, serverPhase, showdown, handleShowdown]);
 
   // Svara demo — force a tie at showdown. Picks the first 2-3 occupied
   // seats (preferring the me-seat so the local player gets the join/decline
