@@ -37,7 +37,7 @@ import type {
 import { useAuthStore } from '../store/authStore';
 import { useGameStore } from '../store/gameStore';
 import { useToastStore } from '../store/toastStore';
-import { emitSocketEvent, onSocketEvent } from './socket';
+import { emitSocketEvent, onSocketConnect, onSocketEvent } from './socket';
 import { adaptGameStateToSnapshot } from './svaraAdapter';
 import { getTelegramUserId } from './telegram';
 
@@ -74,12 +74,26 @@ export interface SvaraTransactionConfirmedEvent {
  * Local monotonically increasing version counter — the svarapro server
  * doesn't ship a snapshot version, so we mint one per applied snapshot
  * to satisfy the reconciliation rule (`incoming >= state.version`).
+ *
+ * Reset to 0 whenever the user leaves the active room (or switches
+ * rooms): `resetRealtime()` zeros `store.version`, and without
+ * resetting this counter a stale snapshot that was already in flight
+ * for the previous room would arrive with a still-incrementing version
+ * (e.g. 6) and be accepted on top of the fresh-room state (version 0).
  */
 let snapshotVersion = 0;
 const nextSnapshotVersion = (): number => {
   snapshotVersion += 1;
   return snapshotVersion;
 };
+
+/**
+ * Server-side room id the user is currently joined to. Used to drop
+ * snapshots whose `roomId` does not match — a defence-in-depth check
+ * for the same in-flight / wrong-room hazard that `snapshotVersion`
+ * resets address. `null` while the user is in the lobby.
+ */
+let currentRoomId: string | null = null;
 
 type Subscriber<P> = (payload: P) => void;
 
@@ -88,6 +102,12 @@ const soundSubscribers = new Set<Subscriber<string>>();
 const stateSubscribers = new Set<Subscriber<SvaraGameState>>();
 
 const handleSnapshot = (state: SvaraGameState): void => {
+  // Wrong-room snapshot — drop it. Without this guard a `game_update`
+  // broadcast that was already on the wire when the user left would
+  // be applied on top of the new (or empty) realtime slice. The
+  // `currentRoomId === null` branch keeps the lobby clean: snapshots
+  // arriving before the user has entered any room are ignored.
+  if (currentRoomId === null || state.roomId !== currentRoomId) return;
   const tgId = getTelegramUserId();
   const selfTelegramId = tgId !== null ? String(tgId) : undefined;
   const payload = adaptGameStateToSnapshot(state, {
@@ -164,8 +184,30 @@ export const attachGameSocketBridge = (): (() => void) => {
       handleTransactionConfirmed,
     ),
   ];
+
+  // Track the active room id and reset the snapshot version on every
+  // change. The snapshot guard inside `handleSnapshot` uses the latter;
+  // the version reset prevents a stale in-flight snapshot from a prior
+  // room being treated as "newer" by the realtime slice (its version
+  // would still be incrementing past `store.version = 0`).
+  currentRoomId =
+    useGameStore.getState().activeRoom?.id != null
+      ? String(useGameStore.getState().activeRoom?.id)
+      : null;
+  const unsubscribeRoom = useGameStore.subscribe((state) => {
+    const nextRoomId =
+      state.activeRoom?.id != null ? String(state.activeRoom.id) : null;
+    if (nextRoomId !== currentRoomId) {
+      currentRoomId = nextRoomId;
+      snapshotVersion = 0;
+    }
+  });
+
   return () => {
     for (const off of offs) off();
+    unsubscribeRoom();
+    currentRoomId = null;
+    snapshotVersion = 0;
   };
 };
 
@@ -202,11 +244,20 @@ export const subscribeToBalanceUpdates = (): void => {
   // separate `client.join(userId)` call — without it `server.to(userId).emit(
   // 'transactionConfirmed', …)` never reaches us. Both gateways live on the
   // same socket connection, so we emit both on bootstrap.
-  emitSocketEvent(SVARA_EVENTS.SUBSCRIBE_BALANCE);
-  const tgId = getTelegramUserId();
-  if (tgId !== null) {
-    emitSocketEvent(SVARA_EVENTS.JOIN, String(tgId));
-  }
+  //
+  // The emits are wired through `onSocketConnect` so every reconnect re-runs
+  // them: socket.io transparently reconnects under the hood but the new
+  // server-side socket is NOT in any of the rooms the previous one joined,
+  // and broadcasts to `telegramId` (balance / transaction confirmed) would
+  // silently stop arriving. The hook also fires immediately when the socket
+  // is already open at subscription time, so bootstrap order is unchanged.
+  onSocketConnect(() => {
+    emitSocketEvent(SVARA_EVENTS.SUBSCRIBE_BALANCE);
+    const tgId = getTelegramUserId();
+    if (tgId !== null) {
+      emitSocketEvent(SVARA_EVENTS.JOIN, String(tgId));
+    }
+  });
 };
 
 /**

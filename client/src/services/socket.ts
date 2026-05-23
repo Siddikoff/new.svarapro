@@ -63,6 +63,15 @@ const resolveSocketUrl = (): string | null => {
 let socket: Socket | null = null;
 /** Listeners registered before the socket exists are replayed on connect. */
 const pendingListeners = new Map<string, Set<SocketHandler>>();
+/**
+ * Callbacks that need to run on every `connect` event (including the
+ * automatic reconnects socket.io performs internally after a transport
+ * drop). Subscribing here is the canonical way to re-emit per-socket
+ * subscriptions (`subscribe_balance`, `join_room`, ...) — without
+ * re-running them the new server-side socket is not in any of the
+ * rooms the previous one was, and broadcasts silently stop arriving.
+ */
+const connectListeners = new Set<() => void>();
 
 const setStatus = (status: (typeof CONNECTION_STATUS)[keyof typeof CONNECTION_STATUS]): void => {
   useConnectionStore.getState().setStatus(status);
@@ -102,7 +111,16 @@ export function connectSocket(
     reconnection: true,
   });
 
-  socket.on('connect', () => setStatus(CONNECTION_STATUS.open));
+  socket.on('connect', () => {
+    setStatus(CONNECTION_STATUS.open);
+    connectListeners.forEach((cb) => {
+      try {
+        cb();
+      } catch {
+        // Swallow — one buggy listener should not block the others.
+      }
+    });
+  });
   socket.on('disconnect', () => setStatus(CONNECTION_STATUS.closed));
   socket.on('connect_error', () => setStatus(CONNECTION_STATUS.closed));
 
@@ -143,6 +161,29 @@ export const emitSocketEvent = <P = unknown>(event: string, payload?: P): void =
   socket?.emit(event, payload);
 };
 
+/**
+ * Register a callback that runs every time the socket transitions into
+ * the `connect` state (initial connect and every subsequent reconnect).
+ *
+ * If the socket is already connected at registration time the callback
+ * fires immediately, so the caller does not need to special-case the
+ * "subscribed before / after open" race. The returned unsubscriber
+ * removes the callback from the rotation; outstanding fires still run.
+ */
+export const onSocketConnect = (cb: () => void): SocketUnsubscribe => {
+  connectListeners.add(cb);
+  if (socket?.connected) {
+    try {
+      cb();
+    } catch {
+      // Same swallow rationale as the on('connect') handler.
+    }
+  }
+  return () => {
+    connectListeners.delete(cb);
+  };
+};
+
 export const isSocketConnected = (): boolean => Boolean(socket?.connected);
 
 /** Internal helpers exposed for tests only. */
@@ -152,5 +193,6 @@ export const __testing__ = {
     socket?.disconnect();
     socket = null;
     pendingListeners.clear();
+    connectListeners.clear();
   },
 };

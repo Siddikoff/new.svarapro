@@ -811,7 +811,7 @@ export default function GameRoom({
     hapticTap();
     triggerBetFlight(blindAmount);
     if (room?.id !== undefined) {
-      sendGameAction(String(room.id), 'blind', blindAmount);
+      sendGameAction(String(room.id), 'blind_bet', blindAmount);
     }
   }, [room?.id, blindAmount, triggerBetFlight]);
 
