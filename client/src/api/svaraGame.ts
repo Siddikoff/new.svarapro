@@ -44,7 +44,7 @@ export type SvaraPlayerAction =
   | 'check'
   | 'call'
   | 'raise'
-  | 'blind'
+  | 'blind_bet'
   | 'look';
 
 export interface SvaraPlayer {

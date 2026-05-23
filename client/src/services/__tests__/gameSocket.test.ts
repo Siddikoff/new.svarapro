@@ -19,6 +19,8 @@ import type { SvaraGameState } from '../../api/svaraGame';
 const handlers = new Map<string, Set<(payload: unknown) => void>>();
 const emits: Array<{ event: string; payload?: unknown }> = [];
 
+const connectHandlers = new Set<() => void>();
+
 vi.mock('../socket', () => ({
   onSocketEvent: (event: string, cb: (payload: unknown) => void) => {
     const bucket = handlers.get(event) ?? new Set();
@@ -28,6 +30,14 @@ vi.mock('../socket', () => ({
   },
   emitSocketEvent: (event: string, payload?: unknown) => {
     emits.push({ event, payload });
+  },
+  // Simulate "already connected": fire immediately so the production
+  // bootstrap order (subscribeToBalanceUpdates after connectSocket) is
+  // preserved in tests.
+  onSocketConnect: (cb: () => void) => {
+    connectHandlers.add(cb);
+    cb();
+    return () => connectHandlers.delete(cb);
   },
 }));
 
@@ -107,13 +117,30 @@ const snapshot = (overrides: Partial<SvaraGameState> = {}): SvaraGameState => ({
   ...overrides,
 });
 
+// Room fixture used to seat the user before the bridge attaches — the
+// new wrong-room guard in `handleSnapshot` drops any frame whose
+// `roomId` doesn't match the active room. Shape matches the `Room`
+// domain interface (the realtime slice only reads `id`).
+const roomFixture = (id: number | string = '1') => ({
+  id,
+  num: 1,
+  players: 0,
+  max: 6,
+  bet: 1,
+});
+
 describe('gameSocket bridge', () => {
   beforeEach(() => {
     handlers.clear();
+    connectHandlers.clear();
     emits.length = 0;
     __testing__.resetSnapshotVersion();
     __testing__.clearSubscribers();
     useGameStore.getState().resetRealtime();
+    // Default: user seated in room '1'. Tests that exercise the
+    // wrong-room guard explicitly override `activeRoom` to test the
+    // mismatch case.
+    useGameStore.setState({ activeRoom: roomFixture('1') });
     useToastStore.getState().clearToasts();
   });
 
@@ -217,6 +244,59 @@ describe('gameSocket bridge', () => {
       // `subscribe_balance` is the GameGateway's per-socket subscription; `join`
       // is the TransactionGateway's per-user room join — both are required so
       // `balanceUpdated` and `transactionConfirmed` push events actually arrive.
+      { event: 'subscribe_balance', payload: undefined },
+      { event: 'join', payload: '111' },
+    ]);
+  });
+
+  it('drops snapshots whose roomId does not match the active room', () => {
+    // Active room is '1' (set in beforeEach). A snapshot for room '2'
+    // (e.g. a stale in-flight broadcast from a previous room) must be
+    // ignored — applying it would paint the previous room's seats onto
+    // the fresh realtime slice and break the next round.
+    attachGameSocketBridge();
+    fire('game_state', snapshot({ roomId: '2' }));
+    const s = useGameStore.getState();
+    expect(s.pot).toBe(0);
+    expect(s.version).toBe(0);
+    expect(Object.keys(s.seats)).toEqual([]);
+  });
+
+  it('drops snapshots when there is no active room (lobby)', () => {
+    // Override the default room set in beforeEach — pretend the user
+    // is sitting in the lobby. Any snapshot frame is suspicious and
+    // must not poison the realtime slice.
+    useGameStore.setState({ activeRoom: null });
+    attachGameSocketBridge();
+    fire('game_state', snapshot());
+    const s = useGameStore.getState();
+    expect(s.version).toBe(0);
+    expect(Object.keys(s.seats)).toEqual([]);
+  });
+
+  it('resets snapshot version when the active room changes', () => {
+    attachGameSocketBridge();
+    fire('game_state', snapshot());
+    expect(useGameStore.getState().version).toBe(1);
+
+    // Switch rooms — the realtime slice would normally be reset by
+    // `useGameSocket`'s cleanup, but here we exercise the bridge's
+    // own reset of `snapshotVersion`. The next snapshot must start
+    // again from version 1 rather than continuing at 2.
+    useGameStore.getState().resetRealtime();
+    useGameStore.setState({ activeRoom: roomFixture('2') });
+    fire('game_state', snapshot({ roomId: '2' }));
+    expect(useGameStore.getState().version).toBe(1);
+  });
+
+  it('re-emits subscribe_balance and join on every reconnect', () => {
+    subscribeToBalanceUpdates();
+    // First connect already fired inside `onSocketConnect` (the mock
+    // fires immediately). Simulate a reconnect by replaying every
+    // registered connect callback.
+    emits.length = 0;
+    for (const cb of connectHandlers) cb();
+    expect(emits).toEqual([
       { event: 'subscribe_balance', payload: undefined },
       { event: 'join', payload: '111' },
     ]);
