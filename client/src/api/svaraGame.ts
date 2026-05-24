@@ -39,9 +39,20 @@ export interface SvaraCard {
   value: number;
 }
 
+/**
+ * Player actions accepted by the svarapro server's `game_action`
+ * handler (`server/src/modules/game/services/game.service.ts:525-548`).
+ * `'check'` was previously in this union but the server has no
+ * corresponding case — sending it just produced a Russian
+ * "Недопустимое действие" toast — so it's removed here to prevent
+ * future code from accidentally emitting it.
+ *
+ * (`'blind'` is the wrong literal — the server only accepts
+ * `'blind_bet'` — but that rename ships in a sibling PR to keep this
+ * change focused on the dead-code removal.)
+ */
 export type SvaraPlayerAction =
   | 'fold'
-  | 'check'
   | 'call'
   | 'raise'
   | 'blind_bet'

@@ -144,4 +144,70 @@ describe('gameStore — realtime slice', () => {
       expect(s.winnerId).toBe(2);
     });
   });
+
+  describe('activeSeatId', () => {
+    it('stores activeSeatId from a snapshot', () => {
+      useGameStore.getState().applySnapshot({
+        version: 1,
+        seats: {},
+        pot: 0,
+        phase: GAME_PHASES.betting,
+        activeSeatId: 3,
+      });
+      expect(useGameStore.getState().activeSeatId).toBe(3);
+    });
+
+    it('snapshot without activeSeatId clears the field to null', () => {
+      useGameStore.getState().applySnapshot({
+        version: 1,
+        seats: {},
+        pot: 0,
+        phase: GAME_PHASES.betting,
+        activeSeatId: 2,
+      });
+      useGameStore.getState().applySnapshot({
+        version: 2,
+        seats: {},
+        pot: 0,
+        phase: GAME_PHASES.showdown,
+      });
+      expect(useGameStore.getState().activeSeatId).toBeNull();
+    });
+
+    it('a tick with activeSeatId updates the field', () => {
+      useGameStore.getState().applySnapshot({
+        version: 2,
+        seats: {},
+        pot: 0,
+        phase: GAME_PHASES.betting,
+        activeSeatId: 1,
+      });
+      useGameStore.getState().applyTick({ t: 100, version: 2, activeSeatId: 4 });
+      expect(useGameStore.getState().activeSeatId).toBe(4);
+    });
+
+    it('a tick without activeSeatId leaves the field unchanged', () => {
+      useGameStore.getState().applySnapshot({
+        version: 2,
+        seats: {},
+        pot: 0,
+        phase: GAME_PHASES.betting,
+        activeSeatId: 5,
+      });
+      useGameStore.getState().applyTick({ t: 100, version: 2, pot: 10 });
+      expect(useGameStore.getState().activeSeatId).toBe(5);
+    });
+
+    it('resetRealtime clears activeSeatId', () => {
+      useGameStore.getState().applySnapshot({
+        version: 1,
+        seats: {},
+        pot: 0,
+        phase: GAME_PHASES.betting,
+        activeSeatId: 2,
+      });
+      useGameStore.getState().resetRealtime();
+      expect(useGameStore.getState().activeSeatId).toBeNull();
+    });
+  });
 });

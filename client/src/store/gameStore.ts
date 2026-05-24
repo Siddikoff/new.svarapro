@@ -55,6 +55,15 @@ export interface RealtimeSlice {
   lastTick: GameTickPayload | null;
   winnerId: SeatId | null;
   /**
+   * Seat whose turn it currently is. Mirrors the server's
+   * `currentPlayerIndex` (translated to a SeatId by the adapter)
+   * during the `betting` / `blind_betting` phases; `null` when no
+   * one is on the clock (dealing, showdown, round_end, idle).
+   *
+   * UI consumers select on this to draw the turn ring / timer.
+   */
+  activeSeatId: SeatId | null;
+  /**
    * Last applied `RoomState.version`. Tick / snapshot frames with a
    * version below this value are stale (out-of-order delivery) and
    * should be dropped by the bridge.
@@ -127,6 +136,7 @@ const createRealtimeSlice: StateCreator<GameStoreState, [], [], RealtimeSlice> =
   phase: GAME_PHASES.idle,
   lastTick: null,
   winnerId: null,
+  activeSeatId: null,
   version: 0,
   lastTickT: 0,
   desyncCount: 0,
@@ -142,6 +152,7 @@ const createRealtimeSlice: StateCreator<GameStoreState, [], [], RealtimeSlice> =
         pot: snapshot.pot ?? 0,
         phase: snapshot.phase ?? GAME_PHASES.idle,
         winnerId: snapshot.winnerId ?? null,
+        activeSeatId: snapshot.activeSeatId ?? null,
         version: incoming,
         // Snapshots reset the per-tick clock — next tick.t must be > 0.
         lastTickT: 0,
@@ -161,6 +172,11 @@ const createRealtimeSlice: StateCreator<GameStoreState, [], [], RealtimeSlice> =
         seats: tick.seats ? { ...state.seats, ...tick.seats } : state.seats,
         pot: tick.pot ?? state.pot,
         phase: tick.phase ?? state.phase,
+        // Ticks may also carry an updated `activeSeatId` (turn moved to
+        // the next player without a full snapshot). `undefined` keeps
+        // the existing value so non-betting ticks don't wipe the ring.
+        activeSeatId:
+          tick.activeSeatId === undefined ? state.activeSeatId : tick.activeSeatId,
       };
     }),
 
@@ -189,6 +205,7 @@ const createRealtimeSlice: StateCreator<GameStoreState, [], [], RealtimeSlice> =
       phase: GAME_PHASES.idle,
       lastTick: null,
       winnerId: null,
+      activeSeatId: null,
       version: 0,
       lastTickT: 0,
       desyncCount: 0,

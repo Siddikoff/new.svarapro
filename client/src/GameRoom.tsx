@@ -169,6 +169,13 @@ export default function GameRoom({
   const serverPhase = useGameStore((state) => state.phase);
   const serverStateVersion = useGameStore((state) => state.version);
   const serverDriven = serverStateVersion > 0;
+  // Server-side seat id whose turn it currently is (translated from
+  // `gameState.currentPlayerIndex` by the adapter, then through
+  // `applySnapshot` into the realtime slice). String keyed by the
+  // server-side position (`"1"` … `"6"`); `null` outside of the
+  // `betting` phases. Local mode (no server) stays at `null` and the
+  // legacy `setActiveTurnSeatId` path keeps running.
+  const serverActiveSeatId = useGameStore((state) => state.activeSeatId);
 
   const mySeatOverlay = useMemo(() => {
     if (!authUser) return null;
@@ -606,6 +613,29 @@ export default function GameRoom({
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cardsDealing, activeDealOrder.length]);
+
+  // Mirror the server-driven `activeSeatId` into the local turn timer.
+  // The realtime slice exposes the seat by server position string
+  // ("1".."6"); the UI's `activeTurnSeatId` is keyed by the local seat
+  // id (1..6, matching `SEATS_DEFAULT[*].id`). Walk through
+  // `SEATID_TO_POS` to find the anchor, then resolve the local seat
+  // sitting there. The legacy `setActiveTurnSeatId(null|me)` paths
+  // above still run for the mock / no-server flow — when
+  // `serverDriven` is false this effect is a no-op.
+  useEffect(() => {
+    if (!serverDriven) return;
+    if (serverActiveSeatId === null) {
+      setActiveTurnSeatId(null);
+      return;
+    }
+    const anchor = SEATID_TO_POS[String(serverActiveSeatId)];
+    if (!anchor) {
+      setActiveTurnSeatId(null);
+      return;
+    }
+    const localSeat = seats.find((s) => s.pos === anchor);
+    setActiveTurnSeatId(localSeat?.id != null ? String(localSeat.id) : null);
+  }, [serverDriven, serverActiveSeatId, SEATID_TO_POS, seats]);
 
   // Bump `anteRound` on the rising edge of `showDealing` — AnteOverlay
   // re-mounts under the new key and replays the chip-toss for the new round.
