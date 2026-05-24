@@ -143,6 +143,13 @@ describe('adaptGameStateToSnapshot', () => {
     expect(adaptGameStateToSnapshot(state({ status: 'betting' })).phase).toBe('betting');
     expect(adaptGameStateToSnapshot(state({ status: 'showdown' })).phase).toBe('showdown');
     expect(adaptGameStateToSnapshot(state({ status: 'svara' })).phase).toBe('betting');
+    // `svara_pending` is the brief decision window between rounds —
+    // hands are revealed, no bet clock. The UI has no dedicated phase
+    // for it so we route it to `showdown`; the SvaraBanner overlay
+    // handles the actual join/skip decision separately.
+    expect(adaptGameStateToSnapshot(state({ status: 'svara_pending' })).phase).toBe(
+      'showdown',
+    );
     expect(adaptGameStateToSnapshot(state({ status: 'finished' })).phase).toBe('round_end');
   });
 

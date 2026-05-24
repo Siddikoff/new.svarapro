@@ -1233,12 +1233,23 @@ export default function GameRoom({
     hapticTap();
     triggerBetFlight(blindAmount);
     setSvaraDecision('join');
-  }, [blindAmount, triggerBetFlight]);
+    // Tell the server. Action only takes effect while the room is in
+    // `svara_pending` (see `game.service.ts:468-471`) — other phases
+    // produce a `'Недопустимое действие'` toast. The popup is gated
+    // on `svaraActive` so by the time the user can press the button
+    // the server is already in `svara_pending`.
+    if (room?.id !== undefined) {
+      sendGameAction(String(room.id), 'join_svara');
+    }
+  }, [blindAmount, triggerBetFlight, room?.id]);
 
   const handleSvaraDecline = useCallback(() => {
     hapticTap();
     setSvaraDecision('decline');
-  }, []);
+    if (room?.id !== undefined) {
+      sendGameAction(String(room.id), 'skip_svara');
+    }
+  }, [room?.id]);
 
   const svaraActive = svaraSeatIds.size >= 2;
   const meInSvara = !!(mySeatKey && svaraSeatIds.has(mySeatKey));
@@ -1271,6 +1282,21 @@ export default function GameRoom({
   // raw `SvaraGameState` snapshots so incoming chat reactions can be
   // attached to the correct seat without going through the adapter.
   const playerToSeatIdRef = useRef<Map<string, number>>(new Map());
+  // Server-driven svara state. The `svaraSeatIds` set elsewhere in
+  // this file is computed locally from `seatHands` (mock / showdown
+  // tie detection); against a real server the tie is announced by
+  // the gateway via `status === 'svara_pending'` together with
+  // `winners[]` and `svaraConfirmed[]`. This hook mirrors those
+  // fields so the SvaraBanner can:
+  //   1. open even when the local hand-comparison path didn't fire,
+  //   2. hide the join button when the local user already pressed
+  //      Join (server's `svaraConfirmed` is the source of truth).
+  const [serverSvaraSeatIds, setServerSvaraSeatIds] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+  const [serverSvaraConfirmed, setServerSvaraConfirmed] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
   useEffect(() => {
     const unsubscribe = subscribeToGameState((state) => {
       const next = new Map<string, number>();
@@ -1283,9 +1309,53 @@ export default function GameRoom({
         next.set(String(player.id), localSeat.id);
       }
       playerToSeatIdRef.current = next;
+
+      // Svara state mirroring. Outside `svara_pending` the banner
+      // should be hidden, so clear both sets.
+      if (state.status !== 'svara_pending') {
+        setServerSvaraSeatIds((prev) => (prev.size === 0 ? prev : new Set()));
+        setServerSvaraConfirmed((prev) => (prev.size === 0 ? prev : new Set()));
+        return;
+      }
+      const tiedKeys = new Set<string>();
+      for (const winner of state.winners ?? []) {
+        if (typeof winner.position !== 'number') continue;
+        const anchor = SEATID_TO_POS[String(winner.position)];
+        if (!anchor) continue;
+        const localSeat = SEATS_DEFAULT.find((s) => s.pos === anchor);
+        if (!localSeat) continue;
+        tiedKeys.add(String(localSeat.id));
+      }
+      setServerSvaraSeatIds(tiedKeys);
+      setServerSvaraConfirmed(new Set(state.svaraConfirmed ?? []));
     });
     return unsubscribe;
   }, [SEATID_TO_POS]);
+
+  // Promote the server-driven svara tie into `svaraSeatIds` so the
+  // existing SvaraBanner machinery (announce → choose phases, popup
+  // visibility, etc.) lights up without a real local hand-comparison.
+  // Local mock mode still drives `svaraSeatIds` from `seatHands`, so
+  // we only override when the server reported a tie.
+  useEffect(() => {
+    if (serverSvaraSeatIds.size < 2) return;
+    setSvaraSeatIds(serverSvaraSeatIds);
+    setSvaraDecision(null);
+    setSvaraPhase('announce');
+    setSvaraBannerVisible(true);
+  }, [serverSvaraSeatIds]);
+
+  // True once the server has confirmed our `join_svara` press. Mirror
+  // the server's truth into the local `svaraDecision` so the popup
+  // dismisses itself (the existing SvaraBanner hides as soon as
+  // `myDecision !== null`). Prevents double-press in the window
+  // between our `sendGameAction` and the next inbound snapshot.
+  const myAlreadyConfirmedSvara =
+    selfTelegramId !== null && serverSvaraConfirmed.has(selfTelegramId);
+  useEffect(() => {
+    if (!myAlreadyConfirmedSvara) return;
+    setSvaraDecision((prev) => prev ?? 'join');
+  }, [myAlreadyConfirmedSvara]);
 
   const handleChatPick = useCallback(
     (item: ChatPickItem) => {

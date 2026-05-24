@@ -37,6 +37,14 @@ import type {
   SeatState,
 } from '../shared/protocol';
 
+// Map the svarapro server's fine-grained status enum onto the four
+// coarse phases the v143 UI knows about. `svara_pending` doesn't
+// have a 1:1 — it's a brief confirmation phase between rounds where
+// the server waits for tied players to press join/decline. The UI
+// has no dedicated phase for it, so we route it to `'showdown'`:
+// hands are revealed, no one's on the bet clock, and the dedicated
+// SvaraBanner overlay (driven by `subscribeToGameState` directly)
+// renders on top to handle the actual decision.
 const STATUS_TO_PHASE: Record<SvaraGameStatus, GamePhase> = {
   waiting: 'idle',
   ante: 'dealing',
@@ -44,7 +52,7 @@ const STATUS_TO_PHASE: Record<SvaraGameStatus, GamePhase> = {
   betting: 'betting',
   showdown: 'showdown',
   svara: 'betting',
-  svara_pending: 'betting',
+  svara_pending: 'showdown',
   finished: 'round_end',
 };
 

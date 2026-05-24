@@ -56,7 +56,12 @@ export type SvaraPlayerAction =
   | 'call'
   | 'raise'
   | 'blind_bet'
-  | 'look';
+  | 'look'
+  // Svara phase confirmations. The server only accepts these while
+  // `status === 'svara_pending'` (see `game.service.ts:468-471`); any
+  // other phase produces a `'Недопустимое действие'` toast.
+  | 'join_svara'
+  | 'skip_svara';
 
 export interface SvaraPlayer {
   /** Telegram user id as a string. */
