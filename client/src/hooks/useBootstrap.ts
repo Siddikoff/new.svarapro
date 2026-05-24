@@ -26,7 +26,7 @@ import { subscribeRoomSocket, useRoomStore } from '../store/roomStore';
  */
 export const useBootstrap = (): void => {
   useEffect(() => {
-    subscribeRoomSocket();
+    const detachRoomSocket = subscribeRoomSocket();
     const detachGameBridge = attachGameSocketBridge();
 
     const run = async (): Promise<void> => {
@@ -52,6 +52,7 @@ export const useBootstrap = (): void => {
 
     return () => {
       detachGameBridge();
+      detachRoomSocket();
     };
   }, []);
 };

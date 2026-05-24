@@ -73,6 +73,39 @@ const pendingListeners = new Map<string, Set<SocketHandler>>();
  */
 const connectListeners = new Set<() => void>();
 
+/**
+ * `visibilitychange` handler we install once `connectSocket` runs.
+ * Tracked so `disconnectSocket` / test resets can remove it cleanly.
+ * Mobile Safari + the Telegram WebView sometimes freeze the WebSocket
+ * when the tab goes to background and silently fail to reconnect when
+ * it returns to foreground — we explicitly poke socket.io to kick its
+ * reconnect logic the moment the tab becomes visible again.
+ */
+let visibilityHandler: (() => void) | null = null;
+
+const attachVisibilityReconnect = (): void => {
+  if (visibilityHandler !== null) return;
+  if (typeof document === 'undefined') return;
+  visibilityHandler = () => {
+    if (document.visibilityState !== 'visible') return;
+    if (!socket) return;
+    if (socket.connected) return;
+    // socket.io's `connect()` is idempotent when already connecting,
+    // so calling it here is safe even if a reconnect attempt is
+    // already in flight — it just hurries the next attempt along.
+    socket.connect();
+  };
+  document.addEventListener('visibilitychange', visibilityHandler);
+};
+
+const detachVisibilityReconnect = (): void => {
+  if (visibilityHandler === null) return;
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', visibilityHandler);
+  }
+  visibilityHandler = null;
+};
+
 const setStatus = (status: (typeof CONNECTION_STATUS)[keyof typeof CONNECTION_STATUS]): void => {
   useConnectionStore.getState().setStatus(status);
 };
@@ -94,7 +127,12 @@ export function connectSocket(
 ): void {
   const url = resolveSocketUrl();
   if (!url) return;
-  if (socket?.connected) return;
+  // Guard against StrictMode double-invoke (and any other accidental
+  // double bootstrap). If a socket already exists — connected OR
+  // mid-handshake — don't open a second one, which would silently
+  // double every server push (chat, game_update, balance) and stack a
+  // second `connect`/`disconnect` listener pair.
+  if (socket) return;
 
   const options: ConnectSocketOptions =
     arg === null || typeof arg === 'string' ? { token: arg } : arg;
@@ -122,8 +160,17 @@ export function connectSocket(
     });
   });
   socket.on('disconnect', () => setStatus(CONNECTION_STATUS.closed));
-  socket.on('connect_error', () => setStatus(CONNECTION_STATUS.closed));
+  // Log connect_error so the cause (CORS, auth, transport) is visible
+  // in the WebView console. socket.io's default behaviour is silent
+  // exponential backoff which makes "why isn't the lobby loading?"
+  // very hard to diagnose against a deployed server.
+  socket.on('connect_error', (err: Error) => {
+    setStatus(CONNECTION_STATUS.closed);
+    // eslint-disable-next-line no-console -- diagnostic surface for prod
+    console.warn('[socket] connect_error:', err?.message ?? err);
+  });
 
+  attachVisibilityReconnect();
   replayPendingListeners(socket);
 }
 
@@ -132,6 +179,7 @@ export const disconnectSocket = (): void => {
   socket.removeAllListeners();
   socket.disconnect();
   socket = null;
+  detachVisibilityReconnect();
   setStatus(CONNECTION_STATUS.closed);
 };
 
@@ -194,5 +242,11 @@ export const __testing__ = {
     socket = null;
     pendingListeners.clear();
     connectListeners.clear();
+    detachVisibilityReconnect();
   },
+  /** Manually fire the visibility handler — used by unit tests. */
+  triggerVisibilityChange: (): void => {
+    visibilityHandler?.();
+  },
+  hasVisibilityHandler: (): boolean => visibilityHandler !== null,
 };

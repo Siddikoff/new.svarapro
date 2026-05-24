@@ -143,18 +143,34 @@ const applyRoomsPayload = (
   useRoomStore.setState({ rooms: mapped });
 };
 
-export const subscribeRoomSocket = (): void => {
-  onSocketEvent<RoomsSocketFrame>('rooms', (frame) => {
+/**
+ * Subscribe the lobby store to the rooms socket channels.
+ *
+ * Returns a detacher that unsubscribes both handlers — callers (e.g.
+ * `useBootstrap`) should run it from their cleanup so React Strict
+ * Mode's double-invocation of effects in dev doesn't stack duplicate
+ * handlers and cause every lobby push to fire `applyRoomsPayload`
+ * twice. Production single-mount is unaffected.
+ */
+export const subscribeRoomSocket = (): (() => void) => {
+  const offRooms = onSocketEvent<RoomsSocketFrame>('rooms', (frame) => {
     if (!frame || !Array.isArray(frame.rooms)) return;
     applyRoomsPayload(frame.rooms);
   });
-  onSocketEvent<RoomsUpdatedFrame>('rooms_updated', (frame) => {
-    if (Array.isArray(frame)) {
-      applyRoomsPayload(frame);
-      return;
-    }
-    if (frame && Array.isArray(frame.rooms)) {
-      applyRoomsPayload(frame.rooms);
-    }
-  });
+  const offRoomsUpdated = onSocketEvent<RoomsUpdatedFrame>(
+    'rooms_updated',
+    (frame) => {
+      if (Array.isArray(frame)) {
+        applyRoomsPayload(frame);
+        return;
+      }
+      if (frame && Array.isArray(frame.rooms)) {
+        applyRoomsPayload(frame.rooms);
+      }
+    },
+  );
+  return () => {
+    offRooms();
+    offRoomsUpdated();
+  };
 };
