@@ -7,23 +7,33 @@ import {
   BadRequestException,
   Query,
   Patch,
+  UseGuards,
+  Request,
 } from '@nestjs/common';
 import { FinancesService } from './finances.service';
 import { Logger } from '@nestjs/common';
 import { CallbackDto } from './dto/callback.dto';
 import { GetBanksDto } from './dto/get-banks.dto';
 import { RubPaymentMethod } from '../../services/noros.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+
+interface AuthenticatedRequest extends Request {
+  user: {
+    telegramId: string;
+  };
+}
 
 @Controller('finances')
 export class FinancesController {
   private readonly logger = new Logger(FinancesController.name);
   constructor(private financesService: FinancesService) { }
 
+  @UseGuards(JwtAuthGuard)
   @Post('transaction')
   async createTransaction(
+    @Request() req: AuthenticatedRequest,
     @Body()
     body: {
-      telegramId: string;
       currency: string;
       type: 'deposit' | 'withdraw';
       amount?: number;
@@ -31,19 +41,7 @@ export class FinancesController {
       destTag?: string;
     },
   ) {
-    // DEBUG log removed
-
-    // Валидация telegramId
-    if (
-      !body.telegramId ||
-      typeof body.telegramId !== 'string' ||
-      body.telegramId.trim() === ''
-    ) {
-      this.logger.error(`Invalid or missing telegramId: ${body.telegramId}`);
-      throw new BadRequestException(
-        'telegramId is required and must be a non-empty string',
-      );
-    }
+    const telegramId = req.user.telegramId;
 
     // Валидация currency
     if (
@@ -66,7 +64,7 @@ export class FinancesController {
     }
 
     const transaction = await this.financesService.initTransaction(
-      body.telegramId,
+      telegramId,
       body.currency,
       body.type,
       body.amount,
@@ -179,11 +177,12 @@ export class FinancesController {
     return this.financesService.getFiatRates();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('fiat/transaction')
   async createFiatTransaction(
+    @Request() req: AuthenticatedRequest,
     @Body()
     body: {
-      telegramId: string;
       amount: number;
       bankId: number;
       currency: string;
@@ -198,20 +197,10 @@ export class FinancesController {
       method?: RubPaymentMethod;
     },
   ) {
+    const telegramId = req.user.telegramId;
     this.logger.log(
-      `[FIAT_TX] Request to create fiat transaction for telegramId: ${body.telegramId}, amount: ${body.amount}, currency: ${body.currency}, bankId: ${body.bankId}`,
+      `[FIAT_TX] Request to create fiat transaction for telegramId: ${telegramId}, amount: ${body.amount}, currency: ${body.currency}, bankId: ${body.bankId}`,
     );
-
-    if (
-      !body.telegramId ||
-      typeof body.telegramId !== 'string' ||
-      body.telegramId.trim() === ''
-    ) {
-      this.logger.error(`Invalid or missing telegramId: ${body.telegramId}`);
-      throw new BadRequestException(
-        'telegramId is required and must be a non-empty string',
-      );
-    }
 
     if (!body.amount || body.amount <= 0) {
       this.logger.error(`Invalid amount: ${body.amount}`);
@@ -237,7 +226,7 @@ export class FinancesController {
     }
 
     const result = await this.financesService.initFiatTransaction(
-      body.telegramId,
+      telegramId,
       body.amount,
       body.bankId,
       body.currency,
@@ -265,11 +254,12 @@ export class FinancesController {
 
 
 
+  @UseGuards(JwtAuthGuard)
   @Post('fiat/withdraw')
   async createFiatWithdraw(
+    @Request() req: AuthenticatedRequest,
     @Body()
     body: {
-      telegramId: string;
       amount: number;
       currency: string;
       number: string; // card/account number
@@ -278,17 +268,8 @@ export class FinancesController {
       method?: RubPaymentMethod;
     },
   ) {
+    const telegramId = req.user.telegramId;
     // A series of validation checks for the request body
-    if (
-      !body.telegramId ||
-      typeof body.telegramId !== 'string' ||
-      body.telegramId.trim() === ''
-    ) {
-      this.logger.error(`Invalid or missing telegramId: ${body.telegramId}`);
-      throw new BadRequestException(
-        'telegramId is required and must be a non-empty string',
-      );
-    }
     if (!body.amount || body.amount <= 0) {
       this.logger.error(`Invalid amount: ${body.amount}`);
       throw new BadRequestException('amount must be greater than 0');
@@ -335,7 +316,7 @@ export class FinancesController {
     }
 
     const result = await this.financesService.initFiatWithdraw(
-      body.telegramId,
+      telegramId,
       body.amount,
       body.currency,
       body.number,
@@ -368,11 +349,12 @@ export class FinancesController {
     return { balance: wallet.balance };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('system-wallet/withdraw')
   async withdrawFromSystemWallet(
+    @Request() req: AuthenticatedRequest,
     @Body()
     body: {
-      telegramId: string;
       amount: number;
       currency: string;
       number: string;
@@ -381,7 +363,7 @@ export class FinancesController {
       method?: RubPaymentMethod;
     },
   ) {
-    if (!body.telegramId) throw new BadRequestException('telegramId is required');
+    const telegramId = req.user.telegramId;
     if (!body.amount || body.amount <= 0) throw new BadRequestException('amount must be > 0');
     if (!body.currency) throw new BadRequestException('currency is required');
     if (!body.number) throw new BadRequestException('number is required');
@@ -389,7 +371,7 @@ export class FinancesController {
     if (!body.owner) throw new BadRequestException('owner is required');
 
     const result = await this.financesService.initSystemWalletWithdraw(
-      body.telegramId,
+      telegramId,
       body.amount,
       body.currency,
       body.number,

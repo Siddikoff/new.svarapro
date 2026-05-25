@@ -12,6 +12,7 @@ import { BettingService } from './betting.service';
 import { PotManager } from '../lib/pot-manager';
 import { GameStateService } from './game-state.service';
 import { UsersService } from '../../users/users.service';
+import { FinancesService } from '../../finances/finances.service';
 import { UserDataDto } from '../dto/user-data.dto';
 import { TURN_DURATION_SECONDS } from '../../../constants/game.constants';
 
@@ -27,6 +28,7 @@ export class GameService {
     private readonly bettingService: BettingService,
     private readonly gameStateService: GameStateService,
     private readonly usersService: UsersService,
+    private readonly financesService: FinancesService,
   ) {
     setInterval(
       () => {
@@ -452,6 +454,7 @@ export class GameService {
     };
     gameState.log.push(action);
 
+    await this.redisService.setGameState(roomId, gameState);
     await this.redisService.publishGameUpdate(roomId, gameState);
 
     await this._checkSvaraCompletion(roomId, gameState);
@@ -752,17 +755,10 @@ export class GameService {
 
         // ИСПРАВЛЕНИЕ: Правильный расчет callAmount для look -> call
         let callAmount = gameState.lastActionAmount;
-        console.log('755>>', callAmount, 'lastAction:', gameState.lastActionAmount)
         // Если нет последней ставки, используем minBet (ante)
         if (callAmount <= 0) {
           callAmount = gameState.minBet;
         }
-        console.log('760>>', callAmount, 'minBet:', gameState.minBet)
-        // ТОЛЬКО если нет lastActionAmount, используем blind ставки
-        if (callAmount == gameState.lastBlindBet) {
-          callAmount = gameState.lastBlindBet * 2;
-        }
-        console.log('765>>', callAmount, 'lastBlindBet:', gameState.lastBlindBet)
         if (callAmount <= 0) {
           return {
             success: false,
@@ -776,16 +772,12 @@ export class GameService {
         const { updatedPlayer, action: callAction } =
           this.playerService.processPlayerBet(player, callAmount, 'call');
         gameState.players[playerIndex] = updatedPlayer;
-        console.log('Банк:', gameState.pot, 'Ставка игрока:',  callAmount, 'Что получается:', Number((gameState.pot + callAmount).toFixed(2)))
         gameState.pot = Number((gameState.pot + callAmount).toFixed(2));
         gameState.chipCount += 1;
         
         // ИСПРАВЛЕНИЕ: Не обновляем lastActionAmount при call после raise max
         if (!gameState.hasRaiseMax) {
           gameState.lastActionAmount = callAmount;
-          console.log(`[LAST_ACTION_AMOUNT_DEBUG] Set lastActionAmount to ${callAmount} after call by ${player.username}`);
-        } else {
-          console.log(`[LAST_ACTION_AMOUNT_DEBUG] Skipping lastActionAmount update after call by ${player.username} because hasRaiseMax=true`);
         }
         
         gameState.log.push(callAction);
@@ -867,11 +859,9 @@ export class GameService {
         gameState.lastRaiseIndex = playerIndex;
         
         gameState.lastActionAmount = raiseAmount;
-        console.log(`[LAST_ACTION_AMOUNT_DEBUG] Set lastActionAmount to ${raiseAmount} after raise by ${player.username}`);
         
         // ИСПРАВЛЕНИЕ: Проверяем, является ли это raise max
         if (updatedPlayer.balance === 0) {
-          console.log(`[RAISE_MAX_DEBUG] Player ${player.username} made raise max! Setting hasRaiseMax=true`);
           gameState.hasRaiseMax = true;
           gameState.raiseMaxPlayerIndex = playerIndex;
         }
@@ -956,7 +946,6 @@ export class GameService {
       }
       
       await this.redisService.setGameState(roomId, gameState);
-      console.log(`[LAST_ACTION_AMOUNT_DEBUG] Publishing game update after raise with lastActionAmount=${gameState.lastActionAmount}`);
       await this.redisService.publishGameUpdate(roomId, gameState);
     }
     return { success: true, gameState };
@@ -1087,8 +1076,8 @@ export class GameService {
       if (playersWithoutMoney.length === svaraPlayers.length && svaraPlayers.length === 2) {
         console.log(`[resolveSvara] Svara participants have no money, splitting pot between ${svaraPlayers.length} players`);
         
-        const winAmount = Number((gameState.pot / 2).toFixed(2));
         const rake = Number((gameState.pot * 0.05).toFixed(2));
+        const winAmount = Number(((gameState.pot - rake) / 2).toFixed(2));
         
         for (const player of svaraPlayers) {
           const playerIndex = gameState.players.findIndex(p => p.id === player.id);
@@ -1108,6 +1097,7 @@ export class GameService {
         
         // Добавляем действие о комиссии
         if (rake > 0) {
+          await this.financesService.addToSystemWallet(rake);
           const action: GameAction = {
             type: 'join',
             telegramId: 'system',
@@ -1188,80 +1178,82 @@ export class GameService {
 
     this.endGameInProgress.add(roomId);
 
-    const scoreResult =
-      this.gameStateService.calculateScoresForPlayers(gameState);
-    gameState = scoreResult.updatedGameState;
-    gameState.log.push(...scoreResult.actions);
+    try {
+      const scoreResult =
+        this.gameStateService.calculateScoresForPlayers(gameState);
+      gameState = scoreResult.updatedGameState;
+      gameState.log.push(...scoreResult.actions);
 
-    const activePlayers = gameState.players.filter((p) => !p.hasFolded);
-    const overallWinners = this.playerService.determineWinners(activePlayers);
+      const activePlayers = gameState.players.filter((p) => !p.hasFolded);
+      const overallWinners = this.playerService.determineWinners(activePlayers);
 
-    if (overallWinners.length > 1) {
-      console.log(`Svara detected in room ${roomId}. Pot will be carried over.`);
+      if (overallWinners.length > 1) {
+        console.log(`Svara detected in room ${roomId}. Pot will be carried over.`);
       
-      // Очищаем таймер при переходе в svara_pending
-      this.clearTurnTimer(roomId);
-      gameState.timer = undefined;
-      gameState.turnStartTime = undefined;
+        // Очищаем таймер при переходе в svara_pending
+        this.clearTurnTimer(roomId);
+        gameState.timer = undefined;
+        gameState.turnStartTime = undefined;
       
-      const phaseResult = this.gameStateService.moveToNextPhase(
-        gameState,
-        'svara_pending',
-      );
-      gameState = phaseResult.updatedGameState;
-      gameState.log.push(...phaseResult.actions);
+        const phaseResult = this.gameStateService.moveToNextPhase(
+          gameState,
+          'svara_pending',
+        );
+        gameState = phaseResult.updatedGameState;
+        gameState.log.push(...phaseResult.actions);
 
-      gameState.isSvara = true;
-      gameState.svaraParticipants = overallWinners.map((w) => w.id);
-      gameState.winners = overallWinners;
-      gameState.svaraConfirmed = [];
-      gameState.svaraDeclined = [];
-      gameState.svaraOriginalPot = gameState.pot; // Сохраняем изначальный банк свары
+        gameState.isSvara = true;
+        gameState.svaraParticipants = overallWinners.map((w) => w.id);
+        gameState.winners = overallWinners;
+        gameState.svaraConfirmed = [];
+        gameState.svaraDeclined = [];
+        gameState.svaraOriginalPot = gameState.pot; // Сохраняем изначальный банк свары
 
-      const svaraAction: GameAction = {
-        type: 'svara',
-        telegramId: 'system',
-        timestamp: Date.now(),
-        message: `Объявлена "Свара"! Банк ${gameState.pot} переходит в следующий раунд.`,
-      };
-      gameState.log.push(svaraAction);
+        const svaraAction: GameAction = {
+          type: 'svara',
+          telegramId: 'system',
+          timestamp: Date.now(),
+          message: `Объявлена "Свара"! Банк ${gameState.pot} переходит в следующий раунд.`,
+        };
+        gameState.log.push(svaraAction);
 
-      await this.redisService.setGameState(roomId, gameState);
-      await this.redisService.publishGameUpdate(roomId, gameState);
+        await this.redisService.setGameState(roomId, gameState);
+        await this.redisService.publishGameUpdate(roomId, gameState);
 
-      const timer = setTimeout(() => {
-        this.resolveSvara(roomId).catch((error) => {
-          console.error(`Error resolving svara for room ${roomId}:`, error);
-        });
-      }, TURN_DURATION_SECONDS * 1000);
-      this.svaraTimers.set(roomId, timer);
-    } else {
+        const timer = setTimeout(() => {
+          this.resolveSvara(roomId).catch((error) => {
+            console.error(`Error resolving svara for room ${roomId}:`, error);
+          });
+        }, TURN_DURATION_SECONDS * 1000);
+        this.svaraTimers.set(roomId, timer);
+      } else {
       
-      // Очищаем таймер при переходе в showdown
-      this.clearTurnTimer(roomId);
-      gameState.timer = undefined;
-      gameState.turnStartTime = undefined;
+        // Очищаем таймер при переходе в showdown
+        this.clearTurnTimer(roomId);
+        gameState.timer = undefined;
+        gameState.turnStartTime = undefined;
       
-      const phaseResult = this.gameStateService.moveToNextPhase(
-        gameState,
-        'showdown',
-      );
-      gameState = phaseResult.updatedGameState;
-      gameState.log.push(...phaseResult.actions);
-      gameState.winners = overallWinners;
+        const phaseResult = this.gameStateService.moveToNextPhase(
+          gameState,
+          'showdown',
+        );
+        gameState = phaseResult.updatedGameState;
+        gameState.log.push(...phaseResult.actions);
+        gameState.winners = overallWinners;
 
-      await this.redisService.setGameState(roomId, gameState);
-      await this.redisService.publishGameUpdate(roomId, gameState);
+        await this.redisService.setGameState(roomId, gameState);
+        await this.redisService.publishGameUpdate(roomId, gameState);
 
-      setTimeout(() => {
-        this.distributeWinnings(roomId).catch((error) => {
-          console.error(`Failed to distribute winnings for room ${roomId}:`, error);
-        });
-      }, 3000);
+        setTimeout(() => {
+          this.distributeWinnings(roomId).catch((error) => {
+            console.error(`Failed to distribute winnings for room ${roomId}:`, error);
+          });
+        }, 3000);
+      }
+    } finally {
+      // Очищаем флаг в конце функции
+      this.endGameInProgress.delete(roomId);
     }
-
-    // Очищаем флаг в конце функции
-    this.endGameInProgress.delete(roomId);
   }
 
   private async distributeWinnings(roomId: string): Promise<void> {

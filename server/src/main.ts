@@ -24,7 +24,7 @@ async function bootstrap() {
   app.use(urlencoded({ extended: true, limit: '10kb' }));
 
   app.enableCors({
-    origin: '*', // In production, specify allowed origins
+    origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
