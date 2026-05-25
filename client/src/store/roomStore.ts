@@ -2,7 +2,6 @@ import { create } from 'zustand';
 
 import { __testing__ as roomsTesting, fetchRooms } from '../api/rooms';
 import { BET_LADDER } from '../constants/bets';
-import { MOCK_ROOMS } from '../data/mocks';
 import { onSocketEvent } from '../services/socket';
 import type { Room } from '../types/domain';
 
@@ -61,9 +60,15 @@ export interface RoomStoreState {
 
 /**
  * roomStore — list of rooms, filters, selected room, tournament registrations.
+ *
+ * Initial `rooms` is an empty array (not a fixture): the lobby populates
+ * itself from `fetchRooms()` and live socket pushes (`rooms` /
+ * `rooms_updated`) on bootstrap. Showing fixtures here would flash a fake
+ * lobby for the first paint, then replace it with the real list once the
+ * server responds.
  */
 export const useRoomStore = create<RoomStoreState>((set, get) => ({
-  rooms: MOCK_ROOMS,
+  rooms: [],
   isLoadingRooms: false,
   error: null,
   filters: initialFilters,

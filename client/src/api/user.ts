@@ -142,15 +142,22 @@ export const fetchCurrentUser = async (): Promise<User> => {
   if (!apiConfigured()) return MOCK_USER;
 
   const profile = await httpRequest<ServerProfile>('/users/profile');
-  if (!profile) return MOCK_USER;
+  if (!profile) {
+    // An empty/null profile from the server is an error condition the
+    // caller can surface, not a reason to render fixture data.
+    throw new Error('Empty /users/profile response');
+  }
   return mapServerProfileToUser(profile);
 };
 
 export const fetchTransactions = async (): Promise<Transaction[]> => {
   if (!apiConfigured()) return MOCK_TRANSACTIONS;
 
+  // No Telegram identity → no real history we can load. Return an empty
+  // list rather than fixtures so the Profile history panel renders its
+  // empty state instead of someone else's transactions.
   const tgId = getTelegramUserId();
-  if (tgId == null) return MOCK_TRANSACTIONS;
+  if (tgId == null) return [];
 
   const list = await httpRequest<ServerTransaction[]>(
     `/finances/history/all/${tgId}`,

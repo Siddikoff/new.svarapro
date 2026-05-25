@@ -1,6 +1,9 @@
+import { useEffect, useState } from 'react';
+
+import { fetchLeaderboard } from '../api/leaderboard';
 import { SectionHeader } from '../components/ui/SectionHeader';
-import { MOCK_LEADERBOARD, MOCK_USER } from '../data/mocks';
 import { COLORS } from '../designSystem';
+import { useAuthStore } from '../store/authStore';
 import type { LeaderboardEntry } from '../types/domain';
 import styles from './RatingScreen.module.css';
 
@@ -17,22 +20,110 @@ const PODIUM_BLOCK_TONES = [
   styles.podiumBlockBronze,
 ] as const;
 
+/**
+ * Rating screen.
+ *
+ * Loads the leaderboard via `api/leaderboard.ts`. The backend has no
+ * `/leaderboard` endpoint yet (see `api/leaderboard.ts` comments), so
+ * the API layer still returns fixtures in dev / preview. In production
+ * this screen is gated off via `VITE_FEATURE_RATING=0`, so the entire
+ * tree below is unreachable until the real endpoint lands.
+ */
 export function RatingScreen() {
+  const [entries, setEntries] = useState<LeaderboardEntry[] | null>(null);
+  const currentUserName = useAuthStore((state) => state.user.name);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchLeaderboard().then((rows) => {
+      if (!cancelled) setEntries(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const isMeRow = (name: string): boolean =>
+    Boolean(currentUserName) && name === currentUserName;
+
+  if (entries === null) {
+    return (
+      <div className={styles.root}>
+        <SectionHeader
+          title="Рейтинг"
+          label="Лучшие игроки"
+          accent={COLORS.gold}
+          count={''}
+          countLabel={''}
+        />
+      </div>
+    );
+  }
+
+  if (entries.length < 3) {
+    return (
+      <div className={styles.root}>
+        <SectionHeader
+          title="Рейтинг"
+          label="Лучшие игроки"
+          accent={COLORS.gold}
+          count={String(entries.length)}
+          countLabel="игроков"
+        />
+        <div className={styles.body}>
+          <div className={styles.listCard}>
+            {entries.map((m: LeaderboardEntry, u: number) => {
+              const isMe = isMeRow(m.name);
+              const isLast = u === entries.length - 1;
+              return (
+                <div
+                  key={m.pos}
+                  className={`${styles.listRow} ${isLast ? styles.listRowLast : ''}`}
+                >
+                  <div className={styles.listRank}>{m.pos}</div>
+                  <div className={`${styles.listAvatar} ${isMe ? styles.listAvatarMe : ''}`}>
+                    {m.avatar}
+                  </div>
+                  <div className={styles.listInfo}>
+                    <div className={`${styles.listName} ${isMe ? styles.listNameMe : ''}`}>
+                      {m.name}
+                      {isMe ? ' (you)' : ''}
+                    </div>
+                    <div className={styles.listMeta}>
+                      {m.games}
+                      {' games / '}
+                      {m.wr}
+                      {'% wins'}
+                    </div>
+                  </div>
+                  <div className={styles.listEarn}>
+                    {'$'}
+                    {m.earned}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.root}>
       <SectionHeader
         title="Рейтинг"
         label="Лучшие игроки"
         accent={COLORS.gold}
-        count="1240"
+        count={String(entries.length)}
         countLabel="игроков"
       />
       <div className={styles.body}>
         <div className={styles.podiumRow}>
-          {[MOCK_LEADERBOARD[1], MOCK_LEADERBOARD[0], MOCK_LEADERBOARD[2]].map(
+          {[entries[1], entries[0], entries[2]].map(
             (m: LeaderboardEntry, u: number) => {
               const isMid = u === 1;
-              const isMe = m.name === MOCK_USER.name;
+              const isMe = isMeRow(m.name);
               return (
                 <div
                   key={m.pos}
@@ -62,9 +153,9 @@ export function RatingScreen() {
           )}
         </div>
         <div className={styles.listCard}>
-          {MOCK_LEADERBOARD.map((m: LeaderboardEntry, u: number) => {
-            const isMe = m.name === MOCK_USER.name;
-            const isLast = u === MOCK_LEADERBOARD.length - 1;
+          {entries.map((m: LeaderboardEntry, u: number) => {
+            const isMe = isMeRow(m.name);
+            const isLast = u === entries.length - 1;
             return (
               <div
                 key={m.pos}

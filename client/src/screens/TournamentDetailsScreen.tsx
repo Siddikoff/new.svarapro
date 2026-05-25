@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
+import { fetchTournamentLeaderboard } from '../api/tournaments';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { Sheet } from '../components/ui/Sheet';
-import { MOCK_TOURNAMENT_LEADERBOARD, MOCK_USER } from '../data/mocks';
 import { COLORS } from '../designSystem';
 import { hapticSuccess } from '../services/haptics';
+import { useAuthStore } from '../store/authStore';
 import type { Tournament, TournamentLeaderboardEntry } from '../types/domain';
 import styles from './TournamentDetailsScreen.module.css';
 
@@ -34,6 +35,22 @@ export function TournamentDetailsScreen({
 }: TournamentDetailsScreenProps) {
   const [tab, setTab] = useState('table');
   const [showJoined, setShowJoined] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<TournamentLeaderboardEntry[] | null>(null);
+  const currentUserName = useAuthStore((state) => state.user.name);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchTournamentLeaderboard().then((rows) => {
+      if (!cancelled) setLeaderboard(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const isMeRow = (name: string): boolean =>
+    Boolean(currentUserName) && name === currentUserName;
+
   const handleRegister = () => {
     onRegister?.();
     hapticSuccess();
@@ -90,16 +107,16 @@ export function TournamentDetailsScreen({
           );
         })}
       </div>
-      {tab === 'table' && (
+      {tab === 'table' && leaderboard && leaderboard.length >= 3 && (
         <div className={styles.tablePane}>
           <div className={styles.podiumRow}>
             {[
-              MOCK_TOURNAMENT_LEADERBOARD[1],
-              MOCK_TOURNAMENT_LEADERBOARD[0],
-              MOCK_TOURNAMENT_LEADERBOARD[2],
+              leaderboard[1],
+              leaderboard[0],
+              leaderboard[2],
             ].map((row: TournamentLeaderboardEntry, idx: number) => {
               const isCenter = idx === 1;
-              const isMe = row.name === MOCK_USER.name;
+              const isMe = isMeRow(row.name);
               return (
                 <div
                   key={row.pos}
@@ -145,9 +162,9 @@ export function TournamentDetailsScreen({
                 {'Приз'}
               </div>
             </div>
-            {MOCK_TOURNAMENT_LEADERBOARD.map((row: TournamentLeaderboardEntry, idx: number) => {
-              const isMe = row.name === MOCK_USER.name;
-              const isLast = idx === MOCK_TOURNAMENT_LEADERBOARD.length - 1;
+            {leaderboard.map((row: TournamentLeaderboardEntry, idx: number) => {
+              const isMe = isMeRow(row.name);
+              const isLast = idx === leaderboard.length - 1;
               return (
                 <div
                   key={row.pos}

@@ -145,8 +145,15 @@ export function ProfileScreen({
 
   const chevronUrl = useMemo(() => buildChevronUrl(theme), [theme]);
 
+  // The backend currently doesn't aggregate per-user `played`/`won`/`earned`
+  // (there's no `/users/stats` endpoint), so `mapServerProfileToUser` always
+  // returns zeros. Until the API lands we pass `null` to render a `—`
+  // placeholder instead of telling the user they've played 0 games.
+  const statsAvailable = false;
   const winRatePercent =
-    user.played > 0 ? Math.round((user.won / user.played) * 100) : 0;
+    statsAvailable && user.played > 0
+      ? Math.round((user.won / user.played) * 100)
+      : null;
 
   const copyTelegramId = () => {
     try {
@@ -210,9 +217,9 @@ export function ProfileScreen({
     <div className={css.screen}>
       <BalanceCard user={user} onDeposit={onDeposit} onWithdraw={onWithdraw} />
       <StatsTriplet
-        played={user.played}
+        played={statsAvailable ? user.played : null}
         winRatePercent={winRatePercent}
-        earned={user.earned}
+        earned={statsAvailable ? user.earned : null}
       />
       <div className={css.menu}>
         {idCopied && <div className={css.toast}>✓ {t('id_copied')}</div>}
