@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
+import { fetchTournaments } from '../api/tournaments';
 import { TournamentCard } from '../components/TournamentCard';
 import { SectionHeader } from '../components/ui/SectionHeader';
-import { MOCK_TOURNAMENTS } from '../data/mocks';
 import { SPACING } from '../designSystem';
 import { useRoomStore } from '../store/roomStore';
 import { TOURNAMENT_TABS, useUiStore } from '../store/uiStore';
@@ -16,19 +16,36 @@ const listStyle : React.CSSProperties = {
 };
 
 /**
- * Tournament list — extracted from the inline JSX block in the old App.jsx.
- * Pulls registration state directly from `roomStore` so children stay dumb.
+ * Tournament list — loads from `api/tournaments.ts`.
+ *
+ * The backend currently has no `/tournaments` endpoint so the API layer
+ * still returns fixtures. In production this whole tree is gated off via
+ * `VITE_FEATURE_TOURNAMENTS=0`, so the fixtures don't leak into the
+ * bundle until the real endpoint exists.
  */
 export function TournamentsListScreen() {
+  const [tournaments, setTournaments] = useState<Tournament[] | null>(null);
+
   const setTournamentTab = useUiStore((state) => state.setTournamentTab);
   const setActiveTournament = useUiStore((state) => state.setActiveTournament);
 
   const joinedTournamentIds = useRoomStore((state) => state.joinedTournamentIds);
   const registerForTournament = useRoomStore((state) => state.registerForTournament);
 
+  useEffect(() => {
+    let cancelled = false;
+    void fetchTournaments().then((rows) => {
+      if (!cancelled) setTournaments(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const activeCount = useMemo(
-    () => MOCK_TOURNAMENTS.filter((tournament: Tournament) => tournament.status === 'active').length,
-    [],
+    () =>
+      tournaments?.filter((tournament) => tournament.status === 'active').length ?? 0,
+    [tournaments],
   );
 
   return (
@@ -41,7 +58,7 @@ export function TournamentsListScreen() {
         countLabel="активных"
       />
       <div style={listStyle}>
-        {MOCK_TOURNAMENTS.map((tournament: Tournament) => {
+        {(tournaments ?? []).map((tournament: Tournament) => {
           const isJoined = joinedTournamentIds.has(tournament.id);
           return (
             <TournamentCard

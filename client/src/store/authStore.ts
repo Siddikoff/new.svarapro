@@ -3,9 +3,27 @@ import { create } from 'zustand';
 import { loginWithInitData } from '../api/auth';
 import { getAuthToken, setAuthToken } from '../api/client';
 import { fetchCurrentUser } from '../api/user';
-import { MOCK_USER } from '../data/mocks';
 import { getTelegramAuthPayload } from '../services/telegram';
 import type { User } from '../types/domain';
+
+/**
+ * Placeholder user shown during the brief window between mount and the
+ * `/auth/login` → `/users/profile` round-trip resolving. Intentionally
+ * blank so the UI doesn't flash someone else's name / avatar / balance.
+ * Components downstream (BalanceCard, ProfileScreen) already render the
+ * empty strings as the avatar placeholder and a $0.00 balance.
+ */
+const EMPTY_USER: User = {
+  name: '',
+  username: '',
+  avatar: '',
+  photo: '',
+  balance: 0,
+  played: 0,
+  won: 0,
+  earned: 0,
+  walletAddress: null,
+};
 
 /**
  * authStore — current user + balance + JWT.
@@ -48,7 +66,7 @@ export interface AuthStoreState {
 const round2 = (value: number): number => parseFloat(value.toFixed(2));
 
 export const useAuthStore = create<AuthStoreState>((set, get) => ({
-  user: MOCK_USER,
+  user: EMPTY_USER,
   // Pick up any JWT persisted by the api/client localStorage helpers so a
   // page reload doesn't kick the user back to anonymous mode while we wait
   // for `login()` to refresh.

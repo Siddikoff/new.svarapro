@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { BalanceCard } from '../../components/BalanceCard';
 import { COLORS } from '../../designSystem';
@@ -42,7 +43,9 @@ interface LobbyScreenProps {
 }
 
 export function LobbyScreen({ user, onDeposit, onWithdraw, onRoom }: LobbyScreenProps) {
+  const { t } = useTranslation();
   const { rooms, filteredRooms, filters, activeFilterCount } = useRooms();
+  const isLoadingRooms = useRoomStore((state) => state.isLoadingRooms);
   const setFilter = useRoomStore((state) => state.setFilter);
   const resetFilters = useRoomStore((state) => state.resetFilters);
 
@@ -82,7 +85,13 @@ export function LobbyScreen({ user, onDeposit, onWithdraw, onRoom }: LobbyScreen
       <div style={listContainerStyle}>
         <ActiveRoomsHeader onlineCount={onlineCount} />
         {filteredRooms.length === 0 ? (
-          <div style={emptyStateStyle}>Комнаты не найдены</div>
+          // While the first `fetchRooms()` / socket push is in flight we
+          // show a neutral loading line instead of "rooms not found" so
+          // the lobby doesn't flash an empty-state error before any data
+          // has arrived.
+          <div style={emptyStateStyle}>
+            {isLoadingRooms && rooms.length === 0 ? t('loading') : t('rooms_not_found')}
+          </div>
         ) : (
           filteredRooms.map((room: Room) => (
             <RoomCard key={room.id} room={room} onJoin={handleJoinRoom} onWatch={handleWatchRoom} />
