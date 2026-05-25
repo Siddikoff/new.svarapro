@@ -176,6 +176,21 @@ export default function GameRoom({
   // `betting` phases. Local mode (no server) stays at `null` and the
   // legacy `setActiveTurnSeatId` path keeps running.
   const serverActiveSeatId = useGameStore((state) => state.activeSeatId);
+  // Server betting metadata, mirrored from `SvaraGameState`. Drives the
+  // call / raise / blind-bet amounts so the buttons match the actual
+  // server-side `lastActionAmount` / `lastBlindBet`, rather than the
+  // static `blindAmount` prop. All four default to 0 until the first
+  // snapshot lands — when `serverDriven` is false we ignore them and
+  // fall back to the static prop math (mock / preview mode).
+  const serverMinBet = useGameStore((state) => state.minBet);
+  const serverCurrentBet = useGameStore((state) => state.currentBet);
+  const serverLastBlindBet = useGameStore((state) => state.lastBlindBet);
+  const serverLastActionAmount = useGameStore((state) => state.lastActionAmount);
+  // Server-pushed turn clock. The bet timer below subtracts elapsed
+  // wall-clock from this so reconnects don't reset the visible clock
+  // to a full 15s.
+  const serverTurnStartTime = useGameStore((state) => state.turnStartTime);
+  const serverTurnDurationMs = useGameStore((state) => state.turnDurationMs);
 
   const mySeatOverlay = useMemo(() => {
     if (!authUser) return null;
@@ -544,8 +559,31 @@ export default function GameRoom({
   useEffect(() => {
     if (!activeTurnSeatId) return;
     autoPassedRef.current = false;
-    turnStartRef.current = performance.now();
-    setTurnTimerProgress(1);
+
+    // Prefer the server's authoritative `turnStartTime`: the visible
+    // clock then survives reconnects / WebView freezes — we render
+    // "time elapsed since the server-recorded turn start", not "time
+    // elapsed since this React effect re-ran". Fall back to
+    // `performance.now()` only when no snapshot has landed yet (mock /
+    // preview mode).
+    const turnDurationMs =
+      serverDriven && serverTurnDurationMs > 0
+        ? serverTurnDurationMs
+        : TURN_DURATION_MS;
+    const serverStartWall =
+      serverDriven && typeof serverTurnStartTime === 'number'
+        ? serverTurnStartTime
+        : null;
+    const initialElapsed =
+      serverStartWall !== null
+        ? Math.max(0, Date.now() - serverStartWall)
+        : 0;
+    const initialRemainingMs = Math.max(0, turnDurationMs - initialElapsed);
+    // `turnStartRef` is used by the RAF loop below — anchor it so
+    // `performance.now() - turnStartRef` equals server-elapsed time
+    // for the rest of the turn.
+    turnStartRef.current = performance.now() - initialElapsed;
+    setTurnTimerProgress(initialRemainingMs / turnDurationMs);
 
     // Sound + vibration on turn start. Guard with a ref so the chord only
     // plays once per turn even if the effect runs twice (StrictMode, or
@@ -567,7 +605,7 @@ export default function GameRoom({
 
     const tick = () => {
       const elapsed = performance.now() - turnStartRef.current;
-      const remaining = Math.max(0, 1 - elapsed / TURN_DURATION_MS);
+      const remaining = Math.max(0, 1 - elapsed / turnDurationMs);
       setTurnTimerProgress(remaining);
 
       if (remaining <= 0) {
@@ -578,7 +616,9 @@ export default function GameRoom({
     };
     turnRafRef.current = requestAnimationFrame(tick);
     // Backup trigger: setTimeout fires on time even when RAF is throttled.
-    turnTimeoutRef.current = setTimeout(fireAutoPass, TURN_DURATION_MS);
+    // Uses the *remaining* budget so a reconnect mid-turn doesn't grant
+    // the player a fresh 15s.
+    turnTimeoutRef.current = setTimeout(fireAutoPass, initialRemainingMs);
     return () => {
       cancelAnimationFrame(turnRafRef.current);
       if (turnTimeoutRef.current != null) {
@@ -586,7 +626,7 @@ export default function GameRoom({
         turnTimeoutRef.current = null;
       }
     };
-  }, [activeTurnSeatId]);
+  }, [activeTurnSeatId, serverDriven, serverTurnStartTime, serverTurnDurationMs]);
 
   // Start the turn timer for the me-seat once the dealing animation ends.
   // Driven by `cardsDealing` (post-ante) so the dealEnd math starts from the
@@ -835,15 +875,63 @@ export default function GameRoom({
     }
   }, [mySeatId, CHIP_SOUND_OFFSET_MS]);
 
-  const callAmount = Math.round(blindAmount / 2);
+  // The local player's server-side seat snapshot. Carries
+  // `bet` (player.currentBet on the server), `stack`, `folded`, and
+  // the betting flags (`hasLooked`, `hasLookedAndMustAct`) we use to
+  // gate the action buttons. Falls back to `null` until the first
+  // snapshot lands so mock / preview mode skips the server-driven
+  // amount math entirely.
+  const myServerSeat = useMemo(() => {
+    if (!serverDriven || !myServerSeatId) return null;
+    return realSeats?.[myServerSeatId] ?? null;
+  }, [serverDriven, myServerSeatId, realSeats]);
+  const myServerBet = myServerSeat?.bet ?? 0;
+  const myServerStack = myServerSeat?.stack ?? 0;
+  // Static-prop fallbacks for the call/raise amounts. These match the
+  // pre-server-state behaviour and only run in mock / preview mode
+  // (serverDriven === false) — once a snapshot lands we switch to the
+  // server-derived values below.
+  const fallbackCallAmount = Math.round(blindAmount / 2);
+  const fallbackMinRaise = blindAmount;
+  const fallbackMaxRaise = blindAmount * 10;
+  // The amount the server expects for `call`:
+  //   call = currentBet - player.currentBet
+  // After a blind-phase `look`, the server enforces `lastBlindBet * 2`
+  // as the call (see `betting.service.ts`), so we route through
+  // `currentBet` which the server already keeps in sync with that rule.
+  // Clamped at 0 so we don't ever ship a negative call amount.
+  const callAmount = serverDriven
+    ? Math.max(0, serverCurrentBet - myServerBet)
+    : fallbackCallAmount;
+  // Raise presets — min is `lastActionAmount * 2` (or `currentBet * 2`
+  // when no action has happened yet), max is the player's full stack
+  // so "Max" really means all-in.
+  const minRaiseAmount = serverDriven
+    ? Math.max(serverLastActionAmount, serverCurrentBet, serverMinBet) * 2 ||
+      serverMinBet * 2
+    : fallbackMinRaise;
+  const maxRaiseAmount = serverDriven
+    ? Math.max(myServerStack, minRaiseAmount)
+    : fallbackMaxRaise;
+  const raiseCurrentBet = serverDriven
+    ? Math.max(serverLastActionAmount, serverCurrentBet)
+    : fallbackCallAmount;
+  // Amount for a blind_bet action. The first blind-bettor pays the
+  // table `minBet` (== ante == `blindAmount`); every subsequent blind
+  // bettor must double the previous one (`lastBlindBet * 2`).
+  const blindBetAmount = serverDriven
+    ? serverLastBlindBet > 0
+      ? serverLastBlindBet * 2
+      : serverMinBet || blindAmount
+    : blindAmount;
 
   const handleBlindBet = useCallback(() => {
     hapticTap();
-    triggerBetFlight(blindAmount);
+    triggerBetFlight(blindBetAmount);
     if (room?.id !== undefined) {
-      sendGameAction(String(room.id), 'blind_bet', blindAmount);
+      sendGameAction(String(room.id), 'blind_bet', blindBetAmount);
     }
-  }, [room?.id, blindAmount, triggerBetFlight]);
+  }, [room?.id, blindBetAmount, triggerBetFlight]);
 
   const handleCall = useCallback(() => {
     hapticTap();
@@ -942,6 +1030,26 @@ export default function GameRoom({
     if (!serverMyHand) return;
     setMyHand(serverMyHand);
   }, [serverMyHand]);
+
+  // Reconcile local UI state with the server's authoritative
+  // `hasLooked` / `folded` for the local seat. This is what makes a
+  // reconnect mid-round restore the correct action bar:
+  //   - if the server says I've already looked, jump straight to
+  //     PostOpenButtons (no second optimistic "look" send);
+  //   - if the server says I've folded, suppress the action bar via
+  //     `myAutoFolded`.
+  // We never *unset* `cardsOpened` from this effect (going from
+  // "looked" back to "blind" mid-round is not a legal server
+  // transition — only `resetRealtime` on room exit clears it).
+  useEffect(() => {
+    if (!myServerSeat) return;
+    if (myServerSeat.hasLooked && !cardsOpened) {
+      setCardsOpened(true);
+    }
+    if (myServerSeat.folded && !myAutoFolded) {
+      setMyAutoFolded(true);
+    }
+  }, [myServerSeat, cardsOpened, myAutoFolded]);
 
   // Showdown — flip every seat's cards face-up simultaneously. When the
   // server is driving the round, prefer per-seat `hand` arrays from the
@@ -1619,9 +1727,9 @@ export default function GameRoom({
 
         <RaiseSheet
           open={raiseOpen}
-          currentBet={Math.round(blindAmount / 2)}
-          minRaise={blindAmount}
-          maxRaise={blindAmount * 10}
+          currentBet={raiseCurrentBet}
+          minRaise={minRaiseAmount}
+          maxRaise={maxRaiseAmount}
           onClose={() => setRaiseOpen(false)}
           onConfirm={handleRaiseConfirm}
         />

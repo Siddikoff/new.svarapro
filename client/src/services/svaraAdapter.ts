@@ -93,6 +93,8 @@ export const adaptPlayerToSeat = (
     folded: player.hasFolded,
     dealer: player.isDealer,
     cardCount: player.cards.length,
+    hasLooked: player.hasLooked,
+    hasLookedAndMustAct: player.hasLookedAndMustAct,
   };
   if (reveal && player.cards.length > 0) {
     seat.hand = player.cards.map(adaptCard);
@@ -138,6 +140,14 @@ export const adaptGameStateToSnapshot = (
   const activePlayer = state.players[state.currentPlayerIndex];
   const winner = state.winners[0];
 
+  // Whether the active phase is one where a player is actually on the
+  // clock. Outside of these, the turn ring is hidden and the timer
+  // should not run — carry `null` so the store wipes any stale value.
+  const isOnClock =
+    state.status === 'betting' ||
+    state.status === 'blind_betting' ||
+    state.status === 'svara';
+
   return {
     seats,
     pot: state.pot,
@@ -145,5 +155,14 @@ export const adaptGameStateToSnapshot = (
     activeSeatId: activePlayer ? seatIdFromPosition(activePlayer.position) : null,
     winnerId: winner ? seatIdFromPosition(winner.position) : null,
     version: opts.version,
+    minBet: state.minBet,
+    currentBet: state.currentBet,
+    lastBlindBet: state.lastBlindBet,
+    lastActionAmount: state.lastActionAmount,
+    // Only forward the turn clock while someone is actually on it; the
+    // store treats `null` as "no clock running".
+    turnStartTime: isOnClock ? state.turnStartTime ?? null : null,
+    turnDurationMs:
+      typeof state.timer === 'number' ? state.timer * 1000 : undefined,
   };
 };

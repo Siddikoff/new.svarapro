@@ -225,7 +225,7 @@ export const sitDown = (payload: SvaraSitDownRequest): void => {
 
 export const sendGameAction = (
   roomId: string,
-  action: SvaraPlayerAction | 'open' | 'all_in',
+  action: SvaraPlayerAction,
   amount?: number,
 ): void => {
   const payload: SvaraGameActionRequest = { roomId, action };
