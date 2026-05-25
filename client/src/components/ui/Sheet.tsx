@@ -7,9 +7,17 @@ export interface SheetProps {
   onClose: () => void;
   children: ReactNode;
   scrollKey?: string | number;
+  /**
+   * Override the backdrop's stacking order. Default `200` keeps the
+   * sheet above the regular app shell but below the `GameRoom`
+   * overlay (`z-index: 9999`). Callers that need to render *above*
+   * the game room (e.g. an insufficient-funds prompt triggered while
+   * spectating) can pass a higher value.
+   */
+  zIndex?: number;
 }
 
-export function Sheet({ onClose, children, scrollKey }: SheetProps) {
+export function Sheet({ onClose, children, scrollKey, zIndex = 200 }: SheetProps) {
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const [_vvH, _setVvH] = useState(typeof window !== 'undefined' ? window.innerHeight : 800);
   useLayoutEffect(() => {
@@ -71,7 +79,7 @@ export function Sheet({ onClose, children, scrollKey }: SheetProps) {
         position: 'fixed',
         inset: 0,
         background: 'rgba(0,0,0,0.45)',
-        zIndex: 200,
+        zIndex,
         display: 'flex',
         alignItems: 'flex-end',
         justifyContent: 'center',

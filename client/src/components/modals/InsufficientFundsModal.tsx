@@ -19,8 +19,12 @@ export function InsufficientFundsModal({
   onDeposit,
   onClose,
 }: InsufficientFundsModalProps) {
+  // GameRoom overlays the lobby at `z-index: 9999`, so the default
+  // sheet z-index (200) would render this prompt *behind* the table
+  // when a spectator tries to sit down without enough funds. Bump it
+  // above the table so the warning is actually visible.
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={onClose} zIndex={10050}>
       <div className={styles.container}>
         <div className={styles.iconWrap}>
           <svg

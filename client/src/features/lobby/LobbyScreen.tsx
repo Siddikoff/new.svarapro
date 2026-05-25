@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { BalanceCard } from '../../components/BalanceCard';
@@ -48,13 +48,12 @@ export function LobbyScreen({ user, onDeposit, onWithdraw, onRoom }: LobbyScreen
   const isLoadingRooms = useRoomStore((state) => state.isLoadingRooms);
   const setFilter = useRoomStore((state) => state.setFilter);
   const resetFilters = useRoomStore((state) => state.resetFilters);
+  // Comes from the `online_count` socket frame pushed by RoomsGateway.
+  // Summing `rooms[].players` here used to always show 0 because the
+  // system rooms ($1, $5, …) start with an empty `players` array.
+  const onlineCount = useRoomStore((state) => state.onlineCount);
 
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
-
-  const onlineCount = useMemo(
-    () => rooms.reduce((total: number, room: Room) => total + room.players, 0),
-    [rooms],
-  );
 
   const handleSearchChange = useCallback(
     (value: string) => setFilter('search', value),

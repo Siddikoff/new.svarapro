@@ -3,6 +3,7 @@ import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { seatPlayer, useAutoSitDown } from '../../features/gameRoom/hooks/useAutoSitDown';
 import type { ThemeName, ThemePref } from '../../hooks/useTheme';
 import { exitTelegramFullscreen } from '../../services/telegram';
+import { useAuthStore } from '../../store/authStore';
 import { GAME_MODES, useGameStore } from '../../store/gameStore';
 import { useRoomStore } from '../../store/roomStore';
 import { RoomLoader } from '../RoomLoader';
@@ -23,6 +24,7 @@ interface GameRoomHostProps {
 export function GameRoomHost({ activeTheme, themePref, onSetThemePref }: GameRoomHostProps) {
   const roomLoaderTarget = useRoomStore((state) => state.roomLoaderTarget);
   const roomLoaderCreating = useRoomStore((state) => state.roomLoaderCreating);
+  const setNeedFundsRoom = useRoomStore((state) => state.setNeedFundsRoom);
   const activeRoom = useGameStore((state) => state.activeRoom);
   const mode = useGameStore((state) => state.mode);
   const enterRoom = useGameStore((state) => state.enterRoom);
@@ -41,13 +43,28 @@ export function GameRoomHost({ activeTheme, themePref, onSetThemePref }: GameRoo
   const handleTakeSeat = useCallback(
     (seat: { id?: number; pos?: string } | null) => {
       if (!activeRoom) return;
+      // Original (`Siddikoff/svarapro`) blocks the sit-down when the
+      // balance can't cover ten rounds at the table's minimum bet:
+      // `parseFloat(balance) < gameState.minBet * 10`. Without this
+      // guard a spectator with $0 can request a seat, the server
+      // bounces the `sit_down` emit, and the user is left staring at
+      // the table with no feedback. We surface the existing
+      // InsufficientFundsModal (rendered by `ModalsManager`) so they
+      // can top up first.
+      const MIN_BALANCE_MULTIPLIER = 10;
+      const balance = useAuthStore.getState().user.balance;
+      const requiredBalance = activeRoom.bet * MIN_BALANCE_MULTIPLIER;
+      if (balance < requiredBalance) {
+        setNeedFundsRoom(activeRoom, requiredBalance);
+        return;
+      }
       seatPlayer(activeRoom, seat);
       setWaitForNextRound(true);
       if (mode === GAME_MODES.watch) {
         enterRoom(activeRoom, GAME_MODES.join);
       }
     },
-    [activeRoom, mode, enterRoom],
+    [activeRoom, mode, enterRoom, setNeedFundsRoom],
   );
 
   // Exit Telegram fullscreen once both the loader and active room are gone.
@@ -60,6 +77,16 @@ export function GameRoomHost({ activeTheme, themePref, onSetThemePref }: GameRoo
       exitTelegramFullscreen();
     }
   }, [activeRoom, roomLoaderTarget]);
+
+  // Memoised so `GameRoom` -> `useTgBackButton` sees a stable reference
+  // across renders. Without this the hook's effect re-ran on every
+  // GameRoom render (timers, animation state…), flickering the Telegram
+  // BackButton hide/show and exposing the WebApp's default close-X icon
+  // between renders.
+  const handleExit = useCallback(() => {
+    setWaitForNextRound(false);
+    exitRoom();
+  }, [exitRoom]);
 
   return (
     <>
@@ -76,10 +103,7 @@ export function GameRoomHost({ activeTheme, themePref, onSetThemePref }: GameRoo
             spectator={mode === GAME_MODES.watch}
             waitForNextRound={waitForNextRound}
             onTakeSeat={mode === GAME_MODES.watch ? handleTakeSeat : undefined}
-            onExit={() => {
-              setWaitForNextRound(false);
-              exitRoom();
-            }}
+            onExit={handleExit}
           />
         </Suspense>
       )}

@@ -33,6 +33,13 @@ const initialFilters: RoomFilters = {
 
 export interface RoomStoreState {
   rooms: Room[];
+  /**
+   * Total connected lobby/game sockets, pushed by the server's
+   * `RoomsGateway` via the `online_count` event. Falls back to 0 when
+   * the server hasn't reported yet (cold-start / preview) so the
+   * lobby badge has something to render.
+   */
+  onlineCount: number;
   isLoadingRooms: boolean;
   error: unknown;
   filters: RoomFilters;
@@ -41,6 +48,14 @@ export interface RoomStoreState {
   roomLoaderTarget: Room | null;
   roomLoaderCreating: boolean;
   needFundsRoom: Room | null;
+  /**
+   * Minimum USDT balance the player needs to enter `needFundsRoom`,
+   * surfaced in the InsufficientFundsModal copy. Defaults to the
+   * room's `bet` (single-buy-in) for the join flow; the spectator
+   * sit-down flow sets it to `bet * 10` to match the original
+   * client's «х10» rule.
+   */
+  needFundsRequiredBalance: number;
   joinedTournamentIds: Set<number>;
 
   loadRooms: () => Promise<void>;
@@ -52,7 +67,7 @@ export interface RoomStoreState {
   showRoomLoader: (room: Room | null, creating?: boolean) => void;
   hideRoomLoader: () => void;
   addRoom: (room: Room) => void;
-  setNeedFundsRoom: (room: Room | null) => void;
+  setNeedFundsRoom: (room: Room | null, requiredBalance?: number) => void;
   clearNeedFundsRoom: () => void;
   registerForTournament: (tournamentId: number) => void;
   isJoinedTournament: (tournamentId: number) => boolean;
@@ -69,6 +84,7 @@ export interface RoomStoreState {
  */
 export const useRoomStore = create<RoomStoreState>((set, get) => ({
   rooms: [],
+  onlineCount: 0,
   isLoadingRooms: false,
   error: null,
   filters: initialFilters,
@@ -77,6 +93,7 @@ export const useRoomStore = create<RoomStoreState>((set, get) => ({
   roomLoaderTarget: null,
   roomLoaderCreating: false,
   needFundsRoom: null,
+  needFundsRequiredBalance: 0,
   joinedTournamentIds: new Set<number>(),
 
   loadRooms: async () => {
@@ -104,8 +121,13 @@ export const useRoomStore = create<RoomStoreState>((set, get) => ({
 
   addRoom: (room) => set((state) => ({ rooms: [room, ...state.rooms] })),
 
-  setNeedFundsRoom: (room) => set({ needFundsRoom: room }),
-  clearNeedFundsRoom: () => set({ needFundsRoom: null }),
+  setNeedFundsRoom: (room, requiredBalance) =>
+    set({
+      needFundsRoom: room,
+      needFundsRequiredBalance: requiredBalance ?? room?.bet ?? 0,
+    }),
+  clearNeedFundsRoom: () =>
+    set({ needFundsRoom: null, needFundsRequiredBalance: 0 }),
 
   registerForTournament: (tournamentId) =>
     set((state) => {
@@ -174,8 +196,18 @@ export const subscribeRoomSocket = (): (() => void) => {
       }
     },
   );
+  // `RoomsGateway.broadcastOnlineCount` pushes the total connected
+  // socket count after every connect/disconnect. Without subscribing
+  // here the lobby fell back to summing `rooms[].players`, which is
+  // always 0 for the empty system rooms and thus showed «0 онлайн»
+  // even when other users were connected.
+  const offOnlineCount = onSocketEvent<number>('online_count', (count) => {
+    if (typeof count !== 'number' || !Number.isFinite(count)) return;
+    useRoomStore.setState({ onlineCount: Math.max(0, Math.trunc(count)) });
+  });
   return () => {
     offRooms();
     offRoomsUpdated();
+    offOnlineCount();
   };
 };
