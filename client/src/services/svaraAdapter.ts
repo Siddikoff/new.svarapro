@@ -88,7 +88,7 @@ export const adaptPlayerToSeat = (
     telegramId: player.id,
     name: player.username,
     photo: player.avatar ?? undefined,
-    stack: player.tableBalance,
+    stack: player.balance,
     bet: player.currentBet,
     folded: player.hasFolded,
     dealer: player.isDealer,
