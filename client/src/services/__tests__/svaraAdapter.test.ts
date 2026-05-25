@@ -184,4 +184,56 @@ describe('adaptGameStateToSnapshot', () => {
     const snapshot = adaptGameStateToSnapshot(state());
     expect(snapshot.winnerId).toBeNull();
   });
+
+  // Regression: the adapter used to drop these fields so the client
+  // recomputed call / raise amounts from a static `blindAmount` prop
+  // and showed a fresh 15s timer on every reconnect. The UI now wires
+  // them straight through into `useGameStore`.
+  it('forwards betting metadata for client-side bet math', () => {
+    const snapshot = adaptGameStateToSnapshot(
+      state({
+        minBet: 20,
+        currentBet: 100,
+        lastBlindBet: 40,
+        lastActionAmount: 80,
+      }),
+    );
+    expect(snapshot.minBet).toBe(20);
+    expect(snapshot.currentBet).toBe(100);
+    expect(snapshot.lastBlindBet).toBe(40);
+    expect(snapshot.lastActionAmount).toBe(80);
+  });
+
+  it('forwards turnStartTime only while a player is on the clock', () => {
+    const onClock = adaptGameStateToSnapshot(
+      state({ status: 'betting', turnStartTime: 1700000000000, timer: 15 }),
+    );
+    expect(onClock.turnStartTime).toBe(1700000000000);
+    expect(onClock.turnDurationMs).toBe(15_000);
+
+    // No clock during showdown / round_end — the UI should hide the
+    // turn ring entirely instead of carrying a stale value.
+    const offClock = adaptGameStateToSnapshot(
+      state({ status: 'showdown', turnStartTime: 1700000000000, timer: 15 }),
+    );
+    expect(offClock.turnStartTime).toBeNull();
+  });
+
+  it('mirrors hasLooked / hasLookedAndMustAct from each player', () => {
+    const snapshot = adaptGameStateToSnapshot(
+      state({
+        players: [
+          player({
+            id: '111',
+            position: 0,
+            hasLooked: true,
+            hasLookedAndMustAct: true,
+          }),
+        ],
+      }),
+      { selfTelegramId: '111' },
+    );
+    expect(snapshot.seats['0']?.hasLooked).toBe(true);
+    expect(snapshot.seats['0']?.hasLookedAndMustAct).toBe(true);
+  });
 });

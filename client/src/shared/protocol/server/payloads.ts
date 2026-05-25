@@ -31,6 +31,29 @@ export const RoomStatePayloadSchema = z.object({
   winnerId: SeatIdSchema.nullable().optional(),
   /** Player whose turn it is, if `phase === 'betting'`. */
   activeSeatId: SeatIdSchema.nullable().optional(),
+  /**
+   * Betting metadata mirrored from the svarapro `GameState`. Optional so
+   * mock/test snapshots that pre-date this schema still parse cleanly.
+   *
+   * - `minBet`           — table ante / minimum bet for this round.
+   * - `currentBet`       — highest committed bet by any active player.
+   * - `lastBlindBet`     — last `blind_bet` amount (used by the next
+   *                        blind bettor: their required amount is x2).
+   * - `lastActionAmount` — amount of the last call/raise (used by the
+   *                        UI to compute callAmount and raise presets).
+   */
+  minBet: MoneySchema.optional(),
+  currentBet: MoneySchema.optional(),
+  lastBlindBet: MoneySchema.optional(),
+  lastActionAmount: MoneySchema.optional(),
+  /**
+   * Turn-clock metadata. `turnStartTime` is `Date.now()` on the server
+   * when the current turn began; `turnDurationMs` is the per-turn
+   * budget. The UI subtracts elapsed time from this so reconnects don't
+   * reset the visible clock.
+   */
+  turnStartTime: z.number().int().nonnegative().nullable().optional(),
+  turnDurationMs: z.number().int().nonnegative().optional(),
 });
 export type RoomStatePayload = z.infer<typeof RoomStatePayloadSchema>;
 

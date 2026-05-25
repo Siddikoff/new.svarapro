@@ -210,4 +210,84 @@ describe('gameStore — realtime slice', () => {
       expect(useGameStore.getState().activeSeatId).toBeNull();
     });
   });
+
+  // The fields below are mirrored from the svarapro `GameState` by the
+  // adapter and used by `GameRoom.tsx` to compute call / raise amounts
+  // and to render a reconnect-aware turn clock. Pinning their storage
+  // here keeps the reducer honest as the slice grows.
+  describe('betting metadata + turn clock', () => {
+    it('stores betting metadata from a snapshot', () => {
+      useGameStore.getState().applySnapshot({
+        version: 1,
+        seats: {},
+        pot: 0,
+        phase: GAME_PHASES.betting,
+        minBet: 20,
+        currentBet: 100,
+        lastBlindBet: 40,
+        lastActionAmount: 80,
+      });
+      const state = useGameStore.getState();
+      expect(state.minBet).toBe(20);
+      expect(state.currentBet).toBe(100);
+      expect(state.lastBlindBet).toBe(40);
+      expect(state.lastActionAmount).toBe(80);
+    });
+
+    it('stores turnStartTime / turnDurationMs from a snapshot', () => {
+      useGameStore.getState().applySnapshot({
+        version: 1,
+        seats: {},
+        pot: 0,
+        phase: GAME_PHASES.betting,
+        turnStartTime: 1700000000000,
+        turnDurationMs: 15_000,
+      });
+      const state = useGameStore.getState();
+      expect(state.turnStartTime).toBe(1700000000000);
+      expect(state.turnDurationMs).toBe(15_000);
+    });
+
+    it('snapshot with null turnStartTime wipes the clock', () => {
+      useGameStore.getState().applySnapshot({
+        version: 1,
+        seats: {},
+        pot: 0,
+        phase: GAME_PHASES.betting,
+        turnStartTime: 1700000000000,
+      });
+      useGameStore.getState().applySnapshot({
+        version: 2,
+        seats: {},
+        pot: 0,
+        phase: GAME_PHASES.showdown,
+        turnStartTime: null,
+      });
+      expect(useGameStore.getState().turnStartTime).toBeNull();
+    });
+
+    it('resetRealtime clears every betting / clock field', () => {
+      useGameStore.getState().applySnapshot({
+        version: 1,
+        seats: {},
+        pot: 0,
+        phase: GAME_PHASES.betting,
+        minBet: 20,
+        currentBet: 100,
+        lastBlindBet: 40,
+        lastActionAmount: 80,
+        turnStartTime: 1700000000000,
+        turnDurationMs: 15_000,
+      });
+      useGameStore.getState().resetRealtime();
+      const state = useGameStore.getState();
+      expect(state.minBet).toBe(0);
+      expect(state.currentBet).toBe(0);
+      expect(state.lastBlindBet).toBe(0);
+      expect(state.lastActionAmount).toBe(0);
+      expect(state.turnStartTime).toBeNull();
+      // 15_000 is the default budget — used when the server omits it.
+      expect(state.turnDurationMs).toBe(15_000);
+    });
+  });
 });

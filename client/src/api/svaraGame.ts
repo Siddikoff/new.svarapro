@@ -148,7 +148,14 @@ export interface SvaraGameState {
 /** Client → server frame for `game_action`. */
 export interface SvaraGameActionRequest {
   roomId: string;
-  action: SvaraPlayerAction | 'open' | 'all_in';
+  // The svarapro server only handles the union members in
+  // `SvaraPlayerAction` plus the two svara_pending confirmations
+  // (`join_svara` / `skip_svara`). `'open'` / `'all_in'` were
+  // historically declared here but fall through to the `default`
+  // branch of `game.service.processAction` and produce a Russian
+  // "Недопустимое действие" toast — they were removed to keep the
+  // wire surface honest.
+  action: SvaraPlayerAction;
   amount?: number;
 }
 

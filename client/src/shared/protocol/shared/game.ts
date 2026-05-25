@@ -46,6 +46,17 @@ export const SeatStateSchema = z.object({
   hand: z.array(CardSchema).optional(),
   /** Number of cards held — for opponents (face-down). */
   cardCount: z.number().int().nonnegative().optional(),
+  /**
+   * Server bookkeeping flags for the betting reducer. Mirrored from
+   * `SvaraPlayer` so the UI can gate Look/Pass/Call/Raise buttons on
+   * the server's source-of-truth rather than local optimistic state.
+   */
+  hasLooked: z.boolean().optional(),
+  /**
+   * True after a blind-phase look — the player MUST act with
+   * call / raise / fold (see server `betting.service.ts:canPerformAction`).
+   */
+  hasLookedAndMustAct: z.boolean().optional(),
 });
 export type SeatState = z.infer<typeof SeatStateSchema>;
 

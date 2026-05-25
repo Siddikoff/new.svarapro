@@ -69,6 +69,19 @@ export interface RealtimeSlice {
    * should be dropped by the bridge.
    */
   version: number;
+  /** Server-side betting metadata, mirrored from `SvaraGameState`. */
+  minBet: number;
+  currentBet: number;
+  lastBlindBet: number;
+  lastActionAmount: number;
+  /**
+   * Server `Date.now()` when the active player's turn began. `null`
+   * when no one is on the clock. The UI subtracts elapsed wall-clock
+   * from this to render a turn timer that survives reconnects.
+   */
+  turnStartTime: number | null;
+  /** Per-turn budget in ms. Falls back to the client default if unset. */
+  turnDurationMs: number;
   /**
    * Last applied `GameTickPayload.t` (server-side ms). Used to drop
    * out-of-order ticks within the same version — the older tick is
@@ -130,6 +143,8 @@ const createSessionSlice: StateCreator<GameStoreState, [], [], SessionSlice> = (
 //   - When a tick is dropped because of a *version mismatch* (gap or
 //     reset), the bridge is expected to call `wsClient.send(REQUEST_SNAPSHOT)`
 //     to resync. The slice itself doesn't talk to the wire.
+const DEFAULT_TURN_DURATION_MS = 15_000;
+
 const createRealtimeSlice: StateCreator<GameStoreState, [], [], RealtimeSlice> = (set) => ({
   seats: {},
   pot: 0,
@@ -140,6 +155,12 @@ const createRealtimeSlice: StateCreator<GameStoreState, [], [], RealtimeSlice> =
   version: 0,
   lastTickT: 0,
   desyncCount: 0,
+  minBet: 0,
+  currentBet: 0,
+  lastBlindBet: 0,
+  lastActionAmount: 0,
+  turnStartTime: null,
+  turnDurationMs: DEFAULT_TURN_DURATION_MS,
 
   applySnapshot: (snapshot) =>
     set((state) => {
@@ -156,6 +177,16 @@ const createRealtimeSlice: StateCreator<GameStoreState, [], [], RealtimeSlice> =
         version: incoming,
         // Snapshots reset the per-tick clock — next tick.t must be > 0.
         lastTickT: 0,
+        minBet: snapshot.minBet ?? state.minBet,
+        currentBet: snapshot.currentBet ?? state.currentBet,
+        lastBlindBet: snapshot.lastBlindBet ?? state.lastBlindBet,
+        lastActionAmount:
+          snapshot.lastActionAmount ?? state.lastActionAmount,
+        turnStartTime:
+          snapshot.turnStartTime === undefined
+            ? state.turnStartTime
+            : snapshot.turnStartTime,
+        turnDurationMs: snapshot.turnDurationMs ?? state.turnDurationMs,
       };
     }),
 
@@ -209,6 +240,12 @@ const createRealtimeSlice: StateCreator<GameStoreState, [], [], RealtimeSlice> =
       version: 0,
       lastTickT: 0,
       desyncCount: 0,
+      minBet: 0,
+      currentBet: 0,
+      lastBlindBet: 0,
+      lastActionAmount: 0,
+      turnStartTime: null,
+      turnDurationMs: DEFAULT_TURN_DURATION_MS,
     }),
 });
 

@@ -83,6 +83,10 @@ export class RoomsService {
 
     await this.redisService.setRoom(roomId, newRoom);
     await this.redisService.addToActiveRooms(roomId);
+    // Broadcast room creation so the lobby sees the new public room
+    // without having to wait for a follow-up sit_down / leave / win
+    // to trigger a publish.
+    await this.redisService.publishRoomUpdate(roomId, newRoom);
 
     const initialGameState = this.gameStateService.createInitialGameState(
       roomId,
@@ -131,6 +135,7 @@ export class RoomsService {
       if (!room.spectators.includes(user.telegramId)) {
         room.spectators.push(user.telegramId);
         await this.redisService.setRoom(room.roomId, room);
+        await this.redisService.publishRoomUpdate(room.roomId, room);
       }
       return room;
     }
@@ -138,6 +143,11 @@ export class RoomsService {
     // Add to room players list, but not to gameState players
     room.players.push(user.telegramId);
     await this.redisService.setRoom(room.roomId, room);
+    // Broadcast the new player count so every lobby observer sees the
+    // delta immediately instead of waiting for the in-room socket
+    // `join_room` (which short-circuits because the player is already
+    // in `room.players` from this REST handler).
+    await this.redisService.publishRoomUpdate(room.roomId, room);
 
     return room;
   }
