@@ -191,6 +191,13 @@ export default function GameRoom({
   // to a full 15s.
   const serverTurnStartTime = useGameStore((state) => state.turnStartTime);
   const serverTurnDurationMs = useGameStore((state) => state.turnDurationMs);
+  // Authoritative winner from the snapshot — populated when the server
+  // computes `state.winners` (showdown / svara resolution). Used to
+  // pin the winner overlay to the right seat instead of recomputing
+  // from locally-dealt cards via `svaraHandScore` (which doesn't know
+  // about the three-7s / two-7s / joker special cases and would
+  // disagree with the backend on those hands).
+  const serverWinnerSeatId = useGameStore((state) => state.winnerId);
 
   const mySeatOverlay = useMemo(() => {
     if (!authUser) return null;
@@ -683,6 +690,43 @@ export default function GameRoom({
     const localSeat = seats.find((s) => s.pos === anchor);
     setActiveTurnSeatId(localSeat?.id != null ? String(localSeat.id) : null);
   }, [serverDriven, serverActiveSeatId, SEATID_TO_POS, seats]);
+
+  // Server-driven mode: reconcile `dealingDone` with the wire phase.
+  //
+  // The svarapro backend transitions from `ante` through `blind_betting`
+  // inside a single `publishGameUpdate` call — it processes the antes,
+  // deals cards, then moves to the betting phase before persisting and
+  // broadcasting. The client therefore never observes a stable
+  // `phase === 'dealing'` window long enough for the local
+  // `showDealing → cardsDealing → dealingDone` chain to complete, and
+  // without this effect the Open/Blind buttons never appear.
+  //
+  // - `idle`            → between rounds, waiting for next deal. Reset.
+  // - `dealing`         → let the local animation chain drive
+  //                       `dealingDone`. If the server lingers in this
+  //                       phase long enough for the chain to complete,
+  //                       the chain wins; if it transitions away faster
+  //                       than the animation, the `betting` branch
+  //                       below promotes `dealingDone` to true.
+  // - `betting`         → cards already dealt by the server. Force
+  //                       `dealingDone` true and `myAutoFolded` false
+  //                       so the action bar renders.
+  // - `showdown` /
+  //   `round_end`       → keep `dealingDone` true so the bar doesn't
+  //                       blink to the empty placeholder mid-showdown.
+  useEffect(() => {
+    if (!serverDriven) return;
+    if (serverPhase === 'idle') {
+      setDealingDone(false);
+      setMyAutoFolded(false);
+      return;
+    }
+    if (serverPhase === 'dealing') {
+      setMyAutoFolded(false);
+      return;
+    }
+    setDealingDone(true);
+  }, [serverDriven, serverPhase]);
 
   // Bump `anteRound` on the rising edge of `showDealing` — AnteOverlay
   // re-mounts under the new key and replays the chip-toss for the new round.
@@ -1210,19 +1254,42 @@ export default function GameRoom({
 
   // Detect the winner after showdown: the single highest scorer.
   // Skipped when a Svara tie is detected (tied seats get the Svara flow).
+  //
+  // Server-driven mode resolves the winner from `state.winners[0]` in
+  // the snapshot (forwarded through the adapter as `winnerId`); fall
+  // back to the local `svaraHandScore` only for the mock / no-server
+  // demo paths. The local score function only handles three-of-a-rank
+  // and the suit-sum case — it disagrees with `card.service.calculateScore`
+  // on three 7s (34), two 7s (23), two aces (22), and the joker 7♣
+  // substitution, so trusting it against a real backend would award
+  // the wrong seat the chips.
   useEffect(() => {
     if (!showdown) return;
     if (svaraSeatIds.size > 0) return;
-    const scored: Array<{ key: string; score: number }> = [];
-    for (const [key, hand] of Object.entries(seatHands)) {
-      if (!hand || hand.length === 0) continue;
-      scored.push({ key, score: svaraHandScore(hand) });
+
+    let winnerId: string | null = null;
+    if (serverDriven) {
+      if (serverWinnerSeatId === null || serverWinnerSeatId === undefined) {
+        return;
+      }
+      const anchor = SEATID_TO_POS[String(serverWinnerSeatId)];
+      if (!anchor) return;
+      const localSeat = seats.find((s) => s.pos === anchor);
+      if (localSeat?.id == null) return;
+      winnerId = String(localSeat.id);
+    } else {
+      const scored: Array<{ key: string; score: number }> = [];
+      for (const [key, hand] of Object.entries(seatHands)) {
+        if (!hand || hand.length === 0) continue;
+        scored.push({ key, score: svaraHandScore(hand) });
+      }
+      if (scored.length < 2) return;
+      const top = scored.reduce((m, s) => (s.score > m ? s.score : m), 0);
+      const winners = scored.filter((s) => s.score === top);
+      if (winners.length !== 1) return;
+      winnerId = winners[0].key;
     }
-    if (scored.length < 2) return;
-    const top = scored.reduce((m, s) => (s.score > m ? s.score : m), 0);
-    const winners = scored.filter((s) => s.score === top);
-    if (winners.length !== 1) return;
-    const winnerId = winners[0].key;
+    if (winnerId === null) return;
     // Calculate pot. Prefer the local running tally (antes + bets booked
     // through `triggerBetFlight`) so the win badge matches the bank
     // readout that the player just watched tick down to 0. Falls back to a
@@ -1308,7 +1375,16 @@ export default function GameRoom({
       );
     }, 800);
     return () => clearTimeout(id);
-  }, [showdown, seatHands, svaraSeatIds.size, seats, CHIP_SOUND_OFFSET_MS]);
+  }, [
+    showdown,
+    seatHands,
+    svaraSeatIds.size,
+    seats,
+    CHIP_SOUND_OFFSET_MS,
+    serverDriven,
+    serverWinnerSeatId,
+    SEATID_TO_POS,
+  ]);
 
   // Reveal the on-table SVARA splash ~1s after a tie is locked in so the
   // player has a beat to read everyone's cards (and notice the tied chips

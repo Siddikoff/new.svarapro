@@ -57,6 +57,20 @@ export const SeatStateSchema = z.object({
    * call / raise / fold (see server `betting.service.ts:canPerformAction`).
    */
   hasLookedAndMustAct: z.boolean().optional(),
+  /**
+   * Свара hand score (7..34) computed authoritatively by the backend
+   * after `look` / showdown / svara resolution. Surfaced here so the
+   * UI's score badge matches the server's pot-distribution logic
+   * exactly (incl. three-of-7s = 34, two 7s = 23, two aces = 22, and
+   * the joker 7♣ substitution rule) — the legacy client-side
+   * `svaraHandScore` only handled the suit-sum + three-of-a-rank
+   * branches and disagreed with the backend on the special cases.
+   *
+   * Optional because mock / pre-look snapshots may omit it; treat
+   * absence as "no server score available, fall back to local
+   * computation".
+   */
+  score: z.number().optional(),
 });
 export type SeatState = z.infer<typeof SeatStateSchema>;
 
