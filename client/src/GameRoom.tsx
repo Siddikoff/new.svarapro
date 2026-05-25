@@ -320,6 +320,13 @@ export default function GameRoom({
     mySeat: mySeatOverlay,
     otherSeats: otherSeatsOverlay,
     dealingFromServer,
+    // Hand the live snapshot's seated-player count to the rotation hook so
+    // its `aloneInRoom` / `emptyPositionsBase` checks track who is actually
+    // at the table right now. `room.players` is captured once when the user
+    // clicked the lobby card and never refreshed for the in-room view, so
+    // without this the first player kept seeing every other seat as empty
+    // even after a second player sat down.
+    serverSeatedCount: serverDriven ? Object.keys(realSeats ?? {}).length : undefined,
   });
 
   const settings = useGameSettings();

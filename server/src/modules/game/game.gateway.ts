@@ -24,7 +24,9 @@ const DISCONNECT_GRACE_PERIOD_MS = 20_000;
 
 @WebSocketGateway({
   cors: {
-    origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'],
+    origin: process.env.ALLOWED_ORIGINS?.split(',') || [
+      'http://localhost:5173',
+    ],
   },
 })
 export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
@@ -64,11 +66,6 @@ export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
 
   afterInit() {
     void this.redisService.subscribeToGameUpdates((roomId, gameState) => {
-      const sockets = this.server?.sockets?.adapter?.rooms?.get(roomId);
-      const size = sockets ? sockets.size : 0;
-      console.log(
-        `[gw][game_update] roomId=${roomId} sockets_in_room=${size} players=${gameState.players?.length ?? 0} status=${gameState.status}`,
-      );
       this.server.to(roomId).emit('game_update', gameState);
     });
 
@@ -115,11 +112,6 @@ export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
     }
 
     void client.join(roomId);
-    const roomSize =
-      this.server?.sockets?.adapter?.rooms?.get(roomId)?.size ?? 0;
-    console.log(
-      `[gw][join_room] telegramId=${telegramId} roomId=${roomId} clientId=${client.id} room_size_now=${roomSize}`,
-    );
 
     // If this player had a pending grace-period leave (e.g. tab was
     // briefly backgrounded), cancel it — they're back. Other players
@@ -129,9 +121,6 @@ export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
     const result = await this.gameService.joinRoom(roomId, telegramId);
 
     if (result.success) {
-      console.log(
-        `[gw][join_room] OK telegramId=${telegramId} roomId=${roomId} gameState.players=${result.gameState?.players?.length ?? 0}`,
-      );
       client.emit('game_state', result.gameState);
     } else {
       console.error(`Error in join_room for ${telegramId}:`, result.error);
@@ -180,12 +169,14 @@ export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
   ): Promise<void> {
     const { roomId, action, amount } = payload;
     const telegramId = this.getTelegramId(client);
-    
+
     // 🔥 ИСПРАВЛЕННАЯ ЗАЩИТА ОТ ДУБЛИРОВАНИЯ
     // Используем client.id вместо telegramId для уникальности
     const clientKey = `${client.id}-${action}-${amount || 'null'}`;
     if (this.processingActions.has(clientKey)) {
-      console.log(`[DUPLICATE_ACTION_BLOCKED] Blocked duplicate action: ${clientKey}`);
+      console.log(
+        `[DUPLICATE_ACTION_BLOCKED] Blocked duplicate action: ${clientKey}`,
+      );
       return;
     }
 
@@ -195,35 +186,37 @@ export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
     setTimeout(() => {
       this.processingActions.delete(clientKey);
     }, 500);
-    
 
     try {
       if (telegramId) {
-      const result = await this.gameService.processAction(
-        roomId,
-        telegramId,
-        action,
-        amount,
-      );
+        const result = await this.gameService.processAction(
+          roomId,
+          telegramId,
+          action,
+          amount,
+        );
 
-      if (result.events) {
-        result.events.forEach((event) => {
-          if (event.to) {
-            this.server.to(event.to).emit(event.name, event.payload);
-          } else {
-            this.server.to(roomId).emit(event.name, event.payload);
-          }
-        });
-      }
+        if (result.events) {
+          result.events.forEach((event) => {
+            if (event.to) {
+              this.server.to(event.to).emit(event.name, event.payload);
+            } else {
+              this.server.to(roomId).emit(event.name, event.payload);
+            }
+          });
+        }
 
-      if (!result.success) {
-        console.error(`Error in game_action for ${telegramId}:`, result.error);
-        client.emit('error', { message: result.error });
+        if (!result.success) {
+          console.error(
+            `Error in game_action for ${telegramId}:`,
+            result.error,
+          );
+          client.emit('error', { message: result.error });
+        }
+      } else {
+        console.error('No telegramId provided for game_action');
+        client.emit('error', { message: 'Требуется авторизация (telegramId)' });
       }
-    } else {
-      console.error('No telegramId provided for game_action');
-      client.emit('error', { message: 'Требуется авторизация (telegramId)' });
-    }
     } catch (error) {
       console.error('Error in handleGameAction:', error);
       client.emit('error', { message: 'Внутренняя ошибка сервера' });
@@ -266,9 +259,6 @@ export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
     const telegramId = this.getTelegramId(client);
 
     if (telegramId) {
-      console.log(
-        `[gw][sit_down] req telegramId=${telegramId} roomId=${roomId} position=${position}`,
-      );
       const result = await this.gameService.sitDown(
         roomId,
         telegramId,
@@ -280,13 +270,14 @@ export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
           `Error in sit_down for ${telegramId} (roomId=${roomId} pos=${position}):`,
           result.error,
         );
+        // Some error paths in `GameService.sitDown` (e.g. balance below
+        // 10×minBet) return `{ success: false, gameState }` without an
+        // `error` field. Surface a generic fallback so the client toast
+        // is never blank — the previous behaviour displayed a useless
+        // empty toast with no actionable message.
         client.emit('error', {
           message: result.error || 'Не удалось сесть за стол',
         });
-      } else {
-        console.log(
-          `[gw][sit_down] OK telegramId=${telegramId} roomId=${roomId} pos=${position} now_seated=${result.gameState?.players?.length ?? 0}`,
-        );
       }
     } else {
       console.error('No telegramId provided for sit_down');

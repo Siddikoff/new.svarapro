@@ -67,6 +67,18 @@ export interface UseSeatRotationOptions {
    * slice yet.
    */
   dealingFromServer?: boolean;
+  /**
+   * Realtime count of seated players (including the local user) from the
+   * server snapshot. When provided, supersedes the stale `room.players`
+   * field (which is set once on room entry and never updated) for the
+   * `aloneInRoom` / `emptyPositionsBase` calculations. Without this, a
+   * second player sitting down never decreased the empty-seat set on the
+   * first player's view, so the first player saw the other player's seat
+   * forced to `empty: true` even though `otherSeats` carried real data.
+   *
+   * `undefined` keeps the legacy room-based count (mock / unit tests).
+   */
+  serverSeatedCount?: number;
 }
 
 export interface UseSeatRotationResult {
@@ -92,6 +104,7 @@ export function useSeatRotation({
   mySeat,
   otherSeats,
   dealingFromServer,
+  serverSeatedCount,
 }: UseSeatRotationOptions): UseSeatRotationResult {
   const [chosenPos, setChosenPos] = useState<SeatAnchorPos | null>(null);
   const [joinedMidDeal, setJoinedMidDeal] = useState<boolean>(false);
@@ -105,9 +118,21 @@ export function useSeatRotation({
     [],
   );
 
+  // Prefer the realtime snapshot count when available — `room.players` is
+  // a snapshot taken when the user clicked the lobby card and is never
+  // refreshed for the in-room view (the `rooms` socket frame only updates
+  // the lobby store). Without this preference, the first player stays
+  // `aloneInRoom = true` forever (suppresses the deal animation) and
+  // `emptyPositionsBase` keeps the other seats forced to empty, so the
+  // second player's overlay never paints onto the felt.
+  const seatedCount =
+    typeof serverSeatedCount === 'number'
+      ? serverSeatedCount
+      : (room?.players ?? 6);
+
   const aloneInRoom = useMemo(
-    () => (room?.players ?? 6) <= 1 && !spectator,
-    [room?.players, spectator],
+    () => seatedCount <= 1 && !spectator,
+    [seatedCount, spectator],
   );
 
   const baseSeats = useMemo<RotationSeat[]>(() => {
@@ -156,6 +181,13 @@ export function useSeatRotation({
 
   const emptyPositionsBase = useMemo<Set<SeatAnchorPos>>(() => {
     const positions = baseSeats;
+    // Server-driven mode: defer to `otherSeats` entirely for empty/occupied
+    // determination (the loop below already handles `!overlay -> empty`).
+    // Returning an empty set here avoids overriding the live overlay with
+    // a stale count from the lobby snapshot.
+    if (typeof serverSeatedCount === 'number') {
+      return new Set<SeatAnchorPos>();
+    }
     if (aloneInRoom) {
       return new Set(positions.filter((s) => !s.me).map((s) => s.pos));
     }
@@ -173,7 +205,7 @@ export function useSeatRotation({
       need -= 1;
     }
     return set;
-  }, [room?.players, baseSeats, aloneInRoom]);
+  }, [room?.players, baseSeats, aloneInRoom, serverSeatedCount]);
 
   const seats = useMemo<RotationSeat[]>(() => {
     const myPos: SeatAnchorPos = chosenPos && chosenPos !== 'bottom' ? chosenPos : 'bottom';
