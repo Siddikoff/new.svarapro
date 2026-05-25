@@ -86,25 +86,57 @@ function rankValue(rank: CardRank): number {
   return Number(rank);
 }
 
-// Очко (point) for a 3-card Свара hand.
+// Очко (point) for a 3-card Свара hand. Mirrors the backend's
+// `card.service.calculateScore` (server/src/modules/game/services/card.service.ts)
+// so the score badge the client paints matches the score the server
+// uses to settle the pot. Key combinations:
 //
-// Стандартные правила:
-//   * три одинаковых ранга (тройка/«свара»)        → 33
-//   * иначе максимальная сумма карт одной масти    → 7..31
+//   * три семёрки (7♥/7♦/7♠/7♣)                    → 34 (max)
+//   * три карты одного ранга                       → value × 3
+//                                                    (тройка тузов = 33,
+//                                                     тройка королей = 30, …)
+//   * две семёрки (без тройки)                     → 23
+//   * два туза   (без тройки)                      → 22
+//   * три карты одной масти                        → сумма (7..31)
+//   * две карты одной масти                        → сумма обеих
+//   * иначе                                        → старшая карта
 //
 // Если карт меньше трёх — возвращаем сумму одномастных по тем картам, что
 // есть, что удобно для UI: счётчик начинает что-то показывать, как только
 // игрок раскрывает руку, даже если по какой-то причине пришло меньше карт.
+//
+// NOTE: backend also handles the 7♣ joker substitution rule, but the
+// frontend's `Card` type has no `isJoker` field — the 7♣ is just a
+// regular 7. That means this function disagrees with the backend on
+// hands where the joker substitution actually pays off; rely on the
+// authoritative `player.score` from the snapshot whenever it's
+// available (forwarded through `SeatState.score` since the v144
+// adapter change).
 export function svaraHandScore(cards: Card[] | null | undefined): number {
   if (!cards || cards.length === 0) return 0;
-  if (
-    cards.length >= 3 &&
-    cards[0].rank === cards[1].rank &&
-    cards[1].rank === cards[2].rank
-  ) {
-    return 33;
+
+  if (cards.length >= 3) {
+    const allSevens = cards.every((c) => c.rank === '7');
+    if (allSevens) return 34;
+
+    if (cards[0].rank === cards[1].rank && cards[1].rank === cards[2].rank) {
+      return rankValue(cards[0].rank) * 3;
+    }
+
+    const sevens = cards.filter((c) => c.rank === '7').length;
+    if (sevens === 2) return 23;
+
+    const aces = cards.filter((c) => c.rank === 'A').length;
+    if (aces === 2) return 22;
   }
+
   const suitSums: Record<CardSuit, number> = {
+    spade: 0,
+    heart: 0,
+    diamond: 0,
+    club: 0,
+  };
+  const suitCounts: Record<CardSuit, number> = {
     spade: 0,
     heart: 0,
     diamond: 0,
@@ -112,10 +144,17 @@ export function svaraHandScore(cards: Card[] | null | undefined): number {
   };
   for (const c of cards) {
     suitSums[c.suit] += rankValue(c.rank);
+    suitCounts[c.suit] += 1;
   }
-  let best = 0;
+  let bestSuitCount = 0;
+  let bestSuitSum = 0;
   for (const s of SUITS) {
-    if (suitSums[s] > best) best = suitSums[s];
+    if (suitCounts[s] > bestSuitCount) {
+      bestSuitCount = suitCounts[s];
+      bestSuitSum = suitSums[s];
+    }
   }
-  return best;
+  if (bestSuitCount >= 2) return bestSuitSum;
+  // No matching suits — fall back to the highest single card value.
+  return Math.max(...cards.map((c) => rankValue(c.rank)));
 }

@@ -96,6 +96,13 @@ export const adaptPlayerToSeat = (
     hasLooked: player.hasLooked,
     hasLookedAndMustAct: player.hasLookedAndMustAct,
   };
+  // `player.score` is only set after the server computes it (`look`,
+  // showdown, svara resolution). Skip the field entirely while it's
+  // still the default `0` so opponents don't paint "0" badges on top
+  // of face-down hands.
+  if (typeof player.score === 'number' && player.score > 0) {
+    seat.score = player.score;
+  }
   if (reveal && player.cards.length > 0) {
     seat.hand = player.cards.map(adaptCard);
   }

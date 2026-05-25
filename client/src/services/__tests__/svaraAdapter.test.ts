@@ -97,10 +97,14 @@ describe('adaptPlayerToSeat', () => {
   });
 
   it('forwards stack / bet / folded / dealer flags', () => {
+    // `stack` mirrors the player's wallet (`SvaraPlayer.balance`), NOT
+    // `tableBalance` — the latter is the cumulative bet committed to
+    // the pot in the current round (`player.service.processPlayerBet`).
     const seat = adaptPlayerToSeat(
       player({
         position: 4,
-        tableBalance: 250,
+        balance: 250,
+        tableBalance: 999, // deliberately set to a sentinel — should NOT leak into `stack`
         currentBet: 30,
         hasFolded: true,
         isDealer: true,
@@ -114,6 +118,22 @@ describe('adaptPlayerToSeat', () => {
       folded: true,
       dealer: true,
     });
+  });
+
+  it('omits `score` while the server still has it at the default 0', () => {
+    const seat = adaptPlayerToSeat(
+      player({ position: 0, score: 0 }),
+      { selfTelegramId: 'unused', showdown: false },
+    );
+    expect(seat.score).toBeUndefined();
+  });
+
+  it('forwards a non-zero `score` from the snapshot', () => {
+    const seat = adaptPlayerToSeat(
+      player({ position: 0, score: 31 }),
+      { selfTelegramId: 'unused', showdown: true },
+    );
+    expect(seat.score).toBe(31);
   });
 });
 
