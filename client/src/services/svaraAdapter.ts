@@ -159,7 +159,15 @@ export const adaptGameStateToSnapshot = (
     seats,
     pot: state.pot,
     phase: STATUS_TO_PHASE[state.status],
-    activeSeatId: activePlayer ? seatIdFromPosition(activePlayer.position) : null,
+    // `currentPlayerIndex` is set even in `waiting` (the dealer is
+    // chosen up front). Surface `activeSeatId` only while a player is
+    // actually on the clock, otherwise the client lights up the turn
+    // ring and starts a 15s timeout for the single player in an empty
+    // room.
+    activeSeatId:
+      isOnClock && activePlayer
+        ? seatIdFromPosition(activePlayer.position)
+        : null,
     winnerId: winner ? seatIdFromPosition(winner.position) : null,
     version: opts.version,
     minBet: state.minBet,

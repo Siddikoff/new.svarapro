@@ -692,7 +692,16 @@ export default function GameRoom({
   // Start the turn timer for the me-seat once the dealing animation ends.
   // Driven by `cardsDealing` (post-ante) so the dealEnd math starts from the
   // moment cards begin flying — not from the moment chips start moving.
+  //
+  // Mock / no-server flow only. In server-driven mode the source of
+  // truth for `activeTurnSeatId` / `dealingDone` / `myAutoFolded` is
+  // the snapshot — the mirror + forced-phase effects above own them.
+  // Running the cardsDealing cleanup branch here on top of those
+  // wipes `activeTurnSeatId` and `dealingDone` back to null/false the
+  // moment the synthetic deal pulse drops, hiding the action bar
+  // immediately after the deal animation finishes.
   useEffect(() => {
+    if (serverDriven) return;
     if (!cardsDealing) {
       // Not dealing — clear any active timer.
       setActiveTurnSeatId(null);
@@ -713,7 +722,7 @@ export default function GameRoom({
     }, dealEndMs + TURN_START_DELAY_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cardsDealing, activeDealOrder.length]);
+  }, [cardsDealing, activeDealOrder.length, serverDriven]);
 
   // Mirror the server-driven `activeSeatId` into the local turn timer.
   // The realtime slice exposes the seat by server position string

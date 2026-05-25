@@ -156,6 +156,42 @@ describe('adaptGameStateToSnapshot', () => {
     expect(snapshot.activeSeatId).toBe('2');
   });
 
+  it('drops activeSeatId outside the betting phases', () => {
+    // `currentPlayerIndex` is set even in `waiting` (the server picks
+    // the dealer up front). Without this gate the client would light
+    // up the turn ring for the first player in a pre-game room.
+    const waiting = adaptGameStateToSnapshot(
+      state({
+        status: 'waiting',
+        currentPlayerIndex: 0,
+        players: [player({ id: '111', position: 0 })],
+      }),
+    );
+    expect(waiting.activeSeatId).toBeNull();
+    expect(waiting.turnStartTime).toBeNull();
+
+    const ante = adaptGameStateToSnapshot(
+      state({
+        status: 'ante',
+        currentPlayerIndex: 0,
+        players: [player({ id: '111', position: 0 })],
+      }),
+    );
+    expect(ante.activeSeatId).toBeNull();
+
+    const betting = adaptGameStateToSnapshot(
+      state({
+        status: 'blind_betting',
+        currentPlayerIndex: 1,
+        players: [
+          player({ id: '111', position: 0 }),
+          player({ id: '222', position: 2 }),
+        ],
+      }),
+    );
+    expect(betting.activeSeatId).toBe('2');
+  });
+
   it('maps server status to v143 phase', () => {
     expect(adaptGameStateToSnapshot(state({ status: 'waiting' })).phase).toBe('idle');
     expect(adaptGameStateToSnapshot(state({ status: 'ante' })).phase).toBe('dealing');
