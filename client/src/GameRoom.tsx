@@ -684,6 +684,43 @@ export default function GameRoom({
     setActiveTurnSeatId(localSeat?.id != null ? String(localSeat.id) : null);
   }, [serverDriven, serverActiveSeatId, SEATID_TO_POS, seats]);
 
+  // Server-driven mode: reconcile `dealingDone` with the wire phase.
+  //
+  // The svarapro backend transitions from `ante` through `blind_betting`
+  // inside a single `publishGameUpdate` call — it processes the antes,
+  // deals cards, then moves to the betting phase before persisting and
+  // broadcasting. The client therefore never observes a stable
+  // `phase === 'dealing'` window long enough for the local
+  // `showDealing → cardsDealing → dealingDone` chain to complete, and
+  // without this effect the Open/Blind buttons never appear.
+  //
+  // - `idle`            → between rounds, waiting for next deal. Reset.
+  // - `dealing`         → let the local animation chain drive
+  //                       `dealingDone`. If the server lingers in this
+  //                       phase long enough for the chain to complete,
+  //                       the chain wins; if it transitions away faster
+  //                       than the animation, the `betting` branch
+  //                       below promotes `dealingDone` to true.
+  // - `betting`         → cards already dealt by the server. Force
+  //                       `dealingDone` true and `myAutoFolded` false
+  //                       so the action bar renders.
+  // - `showdown` /
+  //   `round_end`       → keep `dealingDone` true so the bar doesn't
+  //                       blink to the empty placeholder mid-showdown.
+  useEffect(() => {
+    if (!serverDriven) return;
+    if (serverPhase === 'idle') {
+      setDealingDone(false);
+      setMyAutoFolded(false);
+      return;
+    }
+    if (serverPhase === 'dealing') {
+      setMyAutoFolded(false);
+      return;
+    }
+    setDealingDone(true);
+  }, [serverDriven, serverPhase]);
+
   // Bump `anteRound` on the rising edge of `showDealing` — AnteOverlay
   // re-mounts under the new key and replays the chip-toss for the new round.
   // While we're at it, schedule a poker-chip clink per landing chip. The
