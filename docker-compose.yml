@@ -19,6 +19,7 @@ services:
       - app
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
     networks:
       - app-network
     restart: unless-stopped
