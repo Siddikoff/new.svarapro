@@ -64,6 +64,11 @@ export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
 
   afterInit() {
     void this.redisService.subscribeToGameUpdates((roomId, gameState) => {
+      const sockets = this.server?.sockets?.adapter?.rooms?.get(roomId);
+      const size = sockets ? sockets.size : 0;
+      console.log(
+        `[gw][game_update] roomId=${roomId} sockets_in_room=${size} players=${gameState.players?.length ?? 0} status=${gameState.status}`,
+      );
       this.server.to(roomId).emit('game_update', gameState);
     });
 
@@ -110,6 +115,11 @@ export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
     }
 
     void client.join(roomId);
+    const roomSize =
+      this.server?.sockets?.adapter?.rooms?.get(roomId)?.size ?? 0;
+    console.log(
+      `[gw][join_room] telegramId=${telegramId} roomId=${roomId} clientId=${client.id} room_size_now=${roomSize}`,
+    );
 
     // If this player had a pending grace-period leave (e.g. tab was
     // briefly backgrounded), cancel it — they're back. Other players
@@ -119,6 +129,9 @@ export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
     const result = await this.gameService.joinRoom(roomId, telegramId);
 
     if (result.success) {
+      console.log(
+        `[gw][join_room] OK telegramId=${telegramId} roomId=${roomId} gameState.players=${result.gameState?.players?.length ?? 0}`,
+      );
       client.emit('game_state', result.gameState);
     } else {
       console.error(`Error in join_room for ${telegramId}:`, result.error);
@@ -253,6 +266,9 @@ export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
     const telegramId = this.getTelegramId(client);
 
     if (telegramId) {
+      console.log(
+        `[gw][sit_down] req telegramId=${telegramId} roomId=${roomId} position=${position}`,
+      );
       const result = await this.gameService.sitDown(
         roomId,
         telegramId,
@@ -260,8 +276,17 @@ export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
         userData,
       );
       if (!result.success) {
-        console.error(`Error in sit_down for ${telegramId}:`, result.error);
-        client.emit('error', { message: result.error });
+        console.error(
+          `Error in sit_down for ${telegramId} (roomId=${roomId} pos=${position}):`,
+          result.error,
+        );
+        client.emit('error', {
+          message: result.error || 'Не удалось сесть за стол',
+        });
+      } else {
+        console.log(
+          `[gw][sit_down] OK telegramId=${telegramId} roomId=${roomId} pos=${position} now_seated=${result.gameState?.players?.length ?? 0}`,
+        );
       }
     } else {
       console.error('No telegramId provided for sit_down');
