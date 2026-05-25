@@ -2,7 +2,7 @@
 
 This guide covers running the full stack (NestJS server + React/Vite client +
 Telegram bots + Postgres + Redis + nginx) on a fresh Ubuntu 24.04 VPS, served
-over HTTPS on `app.svarapro.com`.
+over HTTPS on `svarapro.com`.
 
 ## 1. Prerequisites
 
@@ -11,7 +11,7 @@ over HTTPS on `app.svarapro.com`.
 - Docker Engine ≥ 24 and the Docker Compose plugin (`docker compose` v2).
 - `certbot` from apt (used only for issuing/renewing the Let's Encrypt cert —
   nginx itself runs inside the `nginx` compose service).
-- DNS `A` record `app.svarapro.com` → VPS public IP.
+- DNS `A` record `svarapro.com` → VPS public IP.
 - A Telegram main bot token + service bot token + your Telegram numeric
   `user_id`.
 
@@ -51,7 +51,7 @@ POSTGRES_USER=svarapro
 POSTGRES_PASSWORD=<same as root .env>
 POSTGRES_DB=svarapro
 JWT_SECRET=<long random string>
-ALLOWED_ORIGINS=https://app.svarapro.com
+ALLOWED_ORIGINS=https://svarapro.com
 NOROS_BASE_URL=https://rest.noros.org/api/v1
 ```
 
@@ -64,7 +64,7 @@ openssl rand -hex 32   # for POSTGRES_PASSWORD / JWT_SECRET / API_SECRET
 ## 4. Issue the TLS certificate (first run only)
 
 The `nginx` service expects a real cert at
-`/etc/letsencrypt/live/app.svarapro.com/`. Use certbot's `--standalone` mode
+`/etc/letsencrypt/live/svarapro.com/`. Use certbot's `--standalone` mode
 **before** starting docker compose (port 80 must be free), or `--webroot`
 after the stack is up.
 
@@ -73,7 +73,7 @@ after the stack is up.
 ```bash
 apt-get install -y certbot
 certbot certonly --standalone \
-  -d app.svarapro.com \
+  -d svarapro.com \
   --non-interactive --agree-tos -m admin@svarapro.com
 ```
 
@@ -101,7 +101,7 @@ docker compose ps
 docker compose logs -f app  # watch the NestJS server come up
 ```
 
-The app comes up healthy when `GET https://app.svarapro.com/api/v1/health`
+The app comes up healthy when `GET https://svarapro.com/api/v1/health`
 returns `200`.
 
 ## 6. Telegram wiring
@@ -113,20 +113,20 @@ the live domain:
 BOT_TOKEN=<your bot token>
 curl -s "https://api.telegram.org/bot${BOT_TOKEN}/setChatMenuButton" \
   -H 'Content-Type: application/json' \
-  -d '{"menu_button":{"type":"web_app","text":"Play","web_app":{"url":"https://app.svarapro.com"}}}'
+  -d '{"menu_button":{"type":"web_app","text":"Play","web_app":{"url":"https://svarapro.com"}}}'
 ```
 
 If your bot uses webhooks (not long polling), also set:
 
 ```bash
-curl -s "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook?url=https://app.svarapro.com/api/v1/telegram/webhook"
+curl -s "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook?url=https://svarapro.com/api/v1/telegram/webhook"
 ```
 
 ## 7. Smoke test
 
 ```bash
-curl -sSI https://app.svarapro.com/                       # 200 + HSTS
-curl -sS  https://app.svarapro.com/api/v1/health | jq .   # ok
+curl -sSI https://svarapro.com/                       # 200 + HSTS
+curl -sS  https://svarapro.com/api/v1/health | jq .   # ok
 ```
 
 In Telegram, open the bot and tap the Menu Button — the Mini App should load
