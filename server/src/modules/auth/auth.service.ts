@@ -21,13 +21,10 @@ export class AuthService {
       throw new Error('JWT_SECRET is not configured');
     }
 
-    const params = new URLSearchParams(decodeURIComponent(initData));
-    const userParam = params.get('user');
-
-    if (!userParam)
-      throw new UnauthorizedException('Missing user data in initData');
-
-    const validated = { user: JSON.parse(userParam) as TelegramUser };
+    const validated = this.validateInitData(initData);
+    if (!validated) {
+      throw new UnauthorizedException('Invalid initData');
+    }
 
     const { user: tgUser } = validated;
     let user = await this.usersRepository.findOne({

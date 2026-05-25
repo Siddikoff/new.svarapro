@@ -24,7 +24,7 @@ const DISCONNECT_GRACE_PERIOD_MS = 20_000;
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'],
   },
 })
 export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
@@ -175,16 +175,12 @@ export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
       console.log(`[DUPLICATE_ACTION_BLOCKED] Blocked duplicate action: ${clientKey}`);
       return;
     }
-    
-    // Дополнительная защита с timestamp для критических действий
-    const timestampKey = `${client.id}-${action}-${Date.now()}`;
+
     this.processingActions.set(clientKey, true);
-    this.processingActions.set(timestampKey, true);
-    
+
     // Очистка через 500ms для предотвращения накопления
     setTimeout(() => {
       this.processingActions.delete(clientKey);
-      this.processingActions.delete(timestampKey);
     }, 500);
     
 
@@ -222,7 +218,6 @@ export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
       // Очищаем ключи через 1 секунду (дополнительная очистка)
       setTimeout(() => {
         this.processingActions.delete(clientKey);
-        this.processingActions.delete(timestampKey);
       }, 1000);
     }
   }
