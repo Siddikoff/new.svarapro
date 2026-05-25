@@ -84,6 +84,9 @@ export function ModalsManager() {
   const selectedRoomMode = useRoomStore((state) => state.selectedRoomMode);
   const clearSelectedRoom = useRoomStore((state) => state.clearSelectedRoom);
   const needFundsRoom = useRoomStore((state) => state.needFundsRoom);
+  const needFundsRequiredBalance = useRoomStore(
+    (state) => state.needFundsRequiredBalance,
+  );
   const setNeedFundsRoom = useRoomStore((state) => state.setNeedFundsRoom);
   const clearNeedFundsRoom = useRoomStore((state) => state.clearNeedFundsRoom);
   const showRoomLoader = useRoomStore((state) => state.showRoomLoader);
@@ -232,7 +235,7 @@ export function ModalsManager() {
       {needFundsRoom && (
         <InsufficientFundsModal
           balance={user.balance}
-          requiredBet={needFundsRoom.bet}
+          requiredBet={needFundsRequiredBalance || needFundsRoom.bet}
           onClose={clearNeedFundsRoom}
           onDeposit={() => {
             clearNeedFundsRoom();
