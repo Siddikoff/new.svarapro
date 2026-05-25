@@ -86,20 +86,23 @@ export class AuthService {
     };
   }
 
-  // Метод валидации оставляем для будущего использования
+  // Telegram initData validation per Bot API 7.0+.
+  //
+  // The HMAC includes every URL-decoded parameter except `hash` itself
+  // (sorted by key, joined with `\n`). Older Telegram clients omit
+  // `signature`; newer ones include it AND expect it to participate in
+  // the hash — Telegram changed the rule when Ed25519 `signature` was
+  // added alongside HMAC `hash`.
   private validateInitData(initData: string): { user: TelegramUser } | null {
-    const params = new URLSearchParams(decodeURIComponent(initData));
+    const params = new URLSearchParams(initData);
     const hash = params.get('hash');
     if (!hash) return null;
 
-    const dataToCheck: string[] = [];
-    const sortedParams = Array.from(params.entries())
-      .filter(([key]) => key !== 'hash' && key !== 'signature')
-      .sort(([key1], [key2]) => key1.localeCompare(key2));
-
-    for (const [key, val] of sortedParams) {
-      dataToCheck.push(`${key}=${val}`);
-    }
+    const dataToCheck = Array.from(params.entries())
+      .filter(([key]) => key !== 'hash')
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, val]) => `${key}=${val}`)
+      .join('\n');
 
     const secret = crypto
       .createHmac('sha256', 'WebAppData')
@@ -108,12 +111,10 @@ export class AuthService {
 
     const computedHash = crypto
       .createHmac('sha256', secret)
-      .update(dataToCheck.join('\n'))
+      .update(dataToCheck)
       .digest('hex');
 
-    if (hash !== computedHash) {
-      return null;
-    }
+    if (hash !== computedHash) return null;
 
     return { user: JSON.parse(params.get('user')!) as TelegramUser };
   }

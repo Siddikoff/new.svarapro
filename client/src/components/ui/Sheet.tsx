@@ -1,4 +1,5 @@
 import { type ReactNode,useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { COLORS } from '../../designSystem';
 
@@ -62,7 +63,8 @@ export function Sheet({ onClose, children, scrollKey }: SheetProps) {
       window.scrollTo(0, prev.scrollY);
     };
   }, []);
-  return (
+  if (typeof document === 'undefined') return null;
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -106,6 +108,7 @@ export function Sheet({ onClose, children, scrollKey }: SheetProps) {
         />
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
