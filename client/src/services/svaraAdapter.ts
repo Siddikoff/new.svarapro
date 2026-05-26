@@ -99,8 +99,12 @@ export const adaptPlayerToSeat = (
   // `player.score` is only set after the server computes it (`look`,
   // showdown, svara resolution). Skip the field entirely while it's
   // still the default `0` so opponents don't paint "0" badges on top
-  // of face-down hands.
-  if (typeof player.score === 'number' && player.score > 0) {
+  // of face-down hands. Also gate on `reveal` so opponents' scores
+  // don't leak to the local client between the server-side score
+  // computation (which happens as soon as a player taps «Open» /
+  // «Look») and the actual showdown reveal — by Svara rules nobody
+  // sees an opponent's hand strength before cards turn face-up.
+  if (reveal && typeof player.score === 'number' && player.score > 0) {
     seat.score = player.score;
   }
   // Folded players keep their cards face-down even at showdown — by Svara
