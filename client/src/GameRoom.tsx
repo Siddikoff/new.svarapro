@@ -1932,7 +1932,15 @@ export default function GameRoom({
           />
         ) : dealingDone && !myAutoFolded && isMyTurn ? (
           <ActionButtons
-            blindAmount={blindAmount}
+            // Displayed amount must match what `handleBlindBet` actually
+            // sends to the server. `blindBetAmount` honours the doubling
+            // rule (`lastBlindBet * 2` each successive blind, falling
+            // back to the table's `minBet` for the very first one).
+            // The static `blindAmount` prop was being threaded through
+            // here unchanged, so the "Вслепую $X" label was stuck at
+            // the room's minBet (e.g. $1) across consecutive blind
+            // bets instead of climbing 1→2→4→8…
+            blindAmount={blindBetAmount}
             onOpen={handleOpenCards}
             onBlind={handleBlindBet}
           />
