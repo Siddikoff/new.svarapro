@@ -1052,7 +1052,6 @@ export default function GameRoom({
     if (!serverDriven || !myServerSeatId) return null;
     return realSeats?.[myServerSeatId] ?? null;
   }, [serverDriven, myServerSeatId, realSeats]);
-  const myServerBet = myServerSeat?.bet ?? 0;
   const myServerStack = myServerSeat?.stack ?? 0;
   // Static-prop fallbacks for the call/raise amounts. These match the
   // pre-server-state behaviour and only run in mock / preview mode
@@ -1061,14 +1060,21 @@ export default function GameRoom({
   const fallbackCallAmount = Math.round(blindAmount / 2);
   const fallbackMinRaise = blindAmount;
   const fallbackMaxRaise = blindAmount * 10;
-  // The amount the server expects for `call`:
-  //   call = currentBet - player.currentBet
-  // After a blind-phase `look`, the server enforces `lastBlindBet * 2`
-  // as the call (see `betting.service.ts`), so we route through
-  // `currentBet` which the server already keeps in sync with that rule.
-  // Clamped at 0 so we don't ever ship a negative call amount.
+  // The amount the server will deduct for a `call`. Mirrors the
+  // backend's `case 'call'` in `game.service.ts`:
+  //   callAmount = max(lastActionAmount, minBet)
+  // i.e. pay one full action increment (the most recent blind bet /
+  // raise), falling back to the ante (`minBet`) when nobody has yet
+  // acted in the round. This is what the original Svara game does for
+  // the very first player after a `look` — they pay exactly the ante
+  // amount, not 0. The previous implementation computed
+  // `currentBet - myServerBet`, which evaluated to 0 the moment the
+  // first hand looked (no one had bet, so highestBet - myBet = 0) and
+  // rendered a useless "Заплатить $0" button. Server still
+  // enforces balance / state, so the UI just needs to display the
+  // correct figure.
   const callAmount = serverDriven
-    ? Math.max(0, serverCurrentBet - myServerBet)
+    ? Math.max(serverLastActionAmount, serverMinBet)
     : fallbackCallAmount;
   // Raise presets — min is `lastActionAmount * 2` (or `currentBet * 2`
   // when no action has happened yet), max is the player's full stack

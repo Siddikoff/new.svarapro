@@ -104,6 +104,14 @@ export function GameRoomHost({ activeTheme, themePref, onSetThemePref }: GameRoo
             waitForNextRound={waitForNextRound}
             onTakeSeat={mode === GAME_MODES.watch ? handleTakeSeat : undefined}
             onExit={handleExit}
+            // Pass the room's min-bet through as the blind/ante amount.
+            // Without this the GameRoom prop defaults to `20`, so the
+            // "Вслепую $X" button displays $20 in every room (e.g. a
+            // $1-bet room) until the first server snapshot lands — and
+            // even after, the fallback math below uses the wrong
+            // baseline. Reads `room.bet` (= server-side `minBet`) so the
+            // UI matches the backend from the moment the room renders.
+            blindAmount={activeRoom.bet}
           />
         </Suspense>
       )}
