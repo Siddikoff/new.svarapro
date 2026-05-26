@@ -14,12 +14,19 @@ import { GameStateService } from './game-state.service';
 import { UsersService } from '../../users/users.service';
 import { FinancesService } from '../../finances/finances.service';
 import { UserDataDto } from '../dto/user-data.dto';
-import { TURN_DURATION_SECONDS } from '../../../constants/game.constants';
+import {
+  TURN_DURATION_SECONDS,
+  getDealAnimationDelayMs,
+} from '../../../constants/game.constants';
 
 @Injectable()
 export class GameService {
   private turnTimers = new Map<string, NodeJS.Timeout>(); // Хранение таймеров ходов
   private endGameInProgress = new Set<string>(); // Защита от повторных вызовов endGameWithWinner
+  // Pending "start the turn clock once dealing finishes" timers, keyed
+  // by roomId. Cleared if the room transitions out of the dealing
+  // phase before the timer fires (e.g. everyone folds during ante).
+  private dealAnimationTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly redisService: RedisService,
@@ -250,20 +257,97 @@ export class GameService {
     await this.redisService.publishGameUpdate(roomId, finalGameState);
 
     await this.startAntePhase(roomId);
-    
-    // Запускаем таймер для первого игрока
+
+    // Запускаем таймер для первого игрока — но только ПОСЛЕ того, как
+    // на клиенте отыграется анимация раздачи карт. Раньше клок и
+    // turnStartTime публиковались сразу после раздачи, поэтому первые
+    // 2–6 секунд таймера съедала анимация и игрок видел уже
+    // подсчитанное время вместо полных 15 секунд.
     const initialGameState = await this.redisService.getGameState(roomId);
-    if (initialGameState && initialGameState.currentPlayerIndex !== undefined) {
-      const currentPlayer = initialGameState.players[initialGameState.currentPlayerIndex];
+    if (
+      initialGameState &&
+      initialGameState.currentPlayerIndex !== undefined &&
+      initialGameState.currentPlayerIndex >= 0
+    ) {
+      const currentPlayer =
+        initialGameState.players[initialGameState.currentPlayerIndex];
       if (currentPlayer) {
-        this.startTurnTimer(roomId, currentPlayer.id);
-        // Обновляем GameState с информацией о таймере
-        initialGameState.timer = TURN_DURATION_SECONDS;
-        initialGameState.turnStartTime = Date.now();
-        await this.redisService.setGameState(roomId, initialGameState);
-        await this.redisService.publishGameUpdate(roomId, initialGameState);
+        const activePlayerCount = initialGameState.players.filter(
+          (p) => p.isActive,
+        ).length;
+        this.scheduleTurnStartAfterDealing(
+          roomId,
+          currentPlayer.id,
+          activePlayerCount,
+        );
       }
     }
+  }
+
+  /**
+   * Wait for the client-side dealing animation to finish, then start
+   * the turn timer for `playerId` and publish a game update so every
+   * client begins counting down at the same moment. Safe to call
+   * during phases where dealing already happened on the server.
+   */
+  private scheduleTurnStartAfterDealing(
+    roomId: string,
+    playerId: string,
+    activePlayerCount: number,
+  ): void {
+    // If a previous deal-animation timer is still pending (e.g. the
+    // room was reset rapidly), cancel it before queuing a new one.
+    const pending = this.dealAnimationTimers.get(roomId);
+    if (pending) {
+      clearTimeout(pending);
+      this.dealAnimationTimers.delete(roomId);
+    }
+
+    const delayMs = getDealAnimationDelayMs(activePlayerCount);
+
+    const timer = setTimeout(() => {
+      this.dealAnimationTimers.delete(roomId);
+      this.startTurnAfterDealing(roomId, playerId).catch((error) => {
+        console.error(
+          `Failed to start delayed turn timer for room ${roomId}:`,
+          error,
+        );
+      });
+    }, delayMs);
+
+    this.dealAnimationTimers.set(roomId, timer);
+  }
+
+  private async startTurnAfterDealing(
+    roomId: string,
+    playerId: string,
+  ): Promise<void> {
+    const latestState = await this.redisService.getGameState(roomId);
+    if (
+      !latestState ||
+      latestState.currentPlayerIndex === undefined ||
+      latestState.currentPlayerIndex < 0
+    ) {
+      return;
+    }
+    const latestPlayer = latestState.players[latestState.currentPlayerIndex];
+    if (!latestPlayer || latestPlayer.id !== playerId) {
+      return;
+    }
+    // Only the betting phases run a turn clock; skip if the room
+    // already moved past dealing into showdown / end.
+    if (
+      latestState.status !== 'blind_betting' &&
+      latestState.status !== 'betting'
+    ) {
+      return;
+    }
+
+    this.startTurnTimer(roomId, latestPlayer.id);
+    latestState.timer = TURN_DURATION_SECONDS;
+    latestState.turnStartTime = Date.now();
+    await this.redisService.setGameState(roomId, latestState);
+    await this.redisService.publishGameUpdate(roomId, latestState);
   }
 
   async startAntePhase(roomId: string): Promise<void> {
@@ -1357,6 +1441,14 @@ export class GameService {
     if (timer) {
       clearTimeout(timer);
       this.turnTimers.delete(roomId);
+    }
+    // Also cancel any pending "start the turn clock after dealing" timer
+    // so the auto-fold/timer doesn't fire on a stale player after the
+    // phase moves on (e.g. everyone folds during ante).
+    const dealTimer = this.dealAnimationTimers.get(roomId);
+    if (dealTimer) {
+      clearTimeout(dealTimer);
+      this.dealAnimationTimers.delete(roomId);
     }
   }
 

@@ -619,6 +619,19 @@ export default function GameRoom({
 
   useEffect(() => {
     if (!activeTurnSeatId) return;
+    // In server-driven mode the clock should only ever count down when
+    // the server has actually started it — `turnStartTime` is the wire
+    // signal for that. Without this guard the local performance.now()
+    // fallback fires the moment the active-seat ring lights up, which
+    // makes the 15s ring tick while cards are still flying to seats
+    // (server intentionally delays `turnStartTime` until the deal
+    // animation finishes). Bail out instead of starting a phantom
+    // countdown — the effect will re-run once `serverTurnStartTime`
+    // lands and the clock will start cleanly from the server anchor.
+    if (serverDriven && typeof serverTurnStartTime !== 'number') {
+      setTurnTimerProgress(1);
+      return;
+    }
     autoPassedRef.current = false;
 
     // Prefer the server's authoritative `turnStartTime`: the visible
