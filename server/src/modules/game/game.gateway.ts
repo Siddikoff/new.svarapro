@@ -316,8 +316,26 @@ export class GameGateway implements OnGatewayDisconnect, OnGatewayInit {
     const previous = this.pendingDisconnects.get(telegramId);
     if (previous !== undefined) clearTimeout(previous);
 
+    // Immediately fold the player in every active room before the
+    // grace timer fires. The grace window is still useful for keeping
+    // the seat reserved across a brief Telegram WebView refresh, but
+    // we don't want the other seats to wait the full per-turn clock
+    // on a player who's clearly gone. `disconnectFold` is a no-op
+    // outside of active hands (ante / blind_betting / betting), so
+    // disconnecting between rounds doesn't disturb the table.
+    for (const roomId of roomIds) {
+      try {
+        await this.gameService.disconnectFold(roomId, telegramId);
+      } catch (error) {
+        console.error(
+          `[disconnect-grace] disconnectFold(${roomId}, ${telegramId}) failed:`,
+          error,
+        );
+      }
+    }
+
     console.log(
-      `[disconnect-grace] ${telegramId} disconnected from ${roomIds.length} room(s), will leave in ${DISCONNECT_GRACE_PERIOD_MS}ms unless reconnected`,
+      `[disconnect-grace] ${telegramId} disconnected from ${roomIds.length} room(s), folded, will leave in ${DISCONNECT_GRACE_PERIOD_MS}ms unless reconnected`,
     );
 
     const timer = setTimeout(() => {

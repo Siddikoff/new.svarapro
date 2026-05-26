@@ -59,6 +59,91 @@ export class GameService {
     return rooms;
   }
 
+  /**
+   * Immediately fold a player whose socket just dropped (Telegram
+   * closed, app backgrounded, network died). Without this the rest
+   * of the table waits the full per-turn clock (15s) on the missing
+   * player every round during the disconnect grace window — players
+   * saw the disconnected seat sit there "playing" until either the
+   * turn timer or the 20s grace `leaveRoom` finally fired.
+   *
+   * Behaviour mirrors a normal user-initiated fold:
+   *   - If it's the disconnected player's turn → reuses
+   *     `handleFold` so the turn clock is cleared and the next
+   *     player is put on the clock immediately.
+   *   - Otherwise → just flags `hasFolded = true` and broadcasts a
+   *     `game_update` so every other client redraws the seat as
+   *     folded. The existing rotation logic
+   *     (`findNextActivePlayer` etc.) already skips folded seats,
+   *     so when the action wheel reaches them they won't stall.
+   *
+   * Only runs while the room is in an active hand (ante /
+   * blind_betting / betting) — outside of those phases there's
+   * nothing to fold out of, so the regular grace-period
+   * `leaveRoom` handles seat clean-up.
+   *
+   * Idempotent: returns early if the player is already folded /
+   * inactive / not in the game state, so a flurry of reconnect-then-
+   * disconnect events won't double-publish or trip on a missing
+   * player.
+   */
+  async disconnectFold(roomId: string, telegramId: string): Promise<void> {
+    const gameState = await this.redisService.getGameState(roomId);
+    if (!gameState) return;
+
+    const playerIndex = gameState.players.findIndex((p) => p.id === telegramId);
+    if (playerIndex === -1) return;
+
+    const player = gameState.players[playerIndex];
+    if (player.hasFolded || !player.isActive) return;
+
+    const activeStatuses = new Set(['ante', 'blind_betting', 'betting']);
+    if (!activeStatuses.has(gameState.status)) return;
+
+    if (gameState.currentPlayerIndex === playerIndex) {
+      // Reuse the canonical fold path so anchor / endBettingRound /
+      // endGameWithWinner all run exactly as if the player had clicked
+      // "Пас" themselves. `handleFold` also handles the
+      // last-player-standing case by calling `endGameWithWinner`.
+      this.clearTurnTimer(roomId);
+      await this.handleFold(roomId, gameState, playerIndex);
+      return;
+    }
+
+    gameState.players[playerIndex] = this.playerService.updatePlayerStatus(
+      player,
+      {
+        hasFolded: true,
+        lastAction: 'fold',
+        hasLookedAndMustAct: false,
+      },
+    );
+    const foldAction: GameAction = {
+      type: 'fold',
+      telegramId: player.id,
+      timestamp: Date.now(),
+      message: `Игрок ${player.username} отключился и сбросил карты`,
+    };
+    gameState.log.push(foldAction);
+
+    // If only one active player remains after the disconnect-fold,
+    // close out the round immediately — otherwise we'd publish a
+    // half-folded state and wait for the next turn that will never
+    // come.
+    const activePlayers = gameState.players.filter(
+      (p) => p.isActive && !p.hasFolded,
+    );
+    if (activePlayers.length === 1) {
+      await this.redisService.setGameState(roomId, gameState);
+      await this.redisService.publishGameUpdate(roomId, gameState);
+      await this.endGameWithWinner(roomId, gameState);
+      return;
+    }
+
+    await this.redisService.setGameState(roomId, gameState);
+    await this.redisService.publishGameUpdate(roomId, gameState);
+  }
+
   async leaveRoom(roomId: string, telegramId: string): Promise<void> {
     const room = await this.redisService.getRoom(roomId);
     const gameState = await this.redisService.getGameState(roomId);
