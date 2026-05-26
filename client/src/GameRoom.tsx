@@ -494,6 +494,14 @@ export default function GameRoom({
   // in a ref so the per-chip landing callback can read the final figure
   // without depending on the showdown effect's closure.
   const pendingPotRef = useRef<number>(0);
+  // Guard so the winner sequence (winner crown sound + chip sweep + bank
+  // tick-down + win-amount badge) runs exactly once per showdown. The
+  // winner effect re-runs whenever `seatHands` / `seats` / server snapshot
+  // deps change — without this guard each rerun fires another
+  // `playWinnerSound` + chip flight + bank countdown, so players see the
+  // pot drain twice and hear two payout chords. Reset whenever
+  // `showdown` flips false (i.e. the next round starts).
+  const winnerSequenceStartedForRoundRef = useRef<string | null>(null);
 
   // ── Ante animation ────────────────────────────────────────────────
   // Bumped every time `showDealing` flips true so AnteOverlay re-mounts under
@@ -751,6 +759,17 @@ export default function GameRoom({
       setActiveTurnSeatId(null);
       return;
     }
+    // Hide the turn ring entirely while the deal animation is in
+    // flight. The server publishes `activeSeatId` the moment the
+    // round flips into `blind_betting`, but waits to publish
+    // `turnStartTime` until cards have finished flying to seats —
+    // we use that wire signal as our "deal animation finished"
+    // flag here so the ring only appears at the exact moment the
+    // clock actually starts ticking.
+    if (typeof serverTurnStartTime !== 'number') {
+      setActiveTurnSeatId(null);
+      return;
+    }
     const anchor = SEATID_TO_POS[String(serverActiveSeatId)];
     if (!anchor) {
       setActiveTurnSeatId(null);
@@ -758,7 +777,13 @@ export default function GameRoom({
     }
     const localSeat = seats.find((s) => s.pos === anchor);
     setActiveTurnSeatId(localSeat?.id != null ? String(localSeat.id) : null);
-  }, [serverDriven, serverActiveSeatId, SEATID_TO_POS, seats]);
+  }, [
+    serverDriven,
+    serverActiveSeatId,
+    serverTurnStartTime,
+    SEATID_TO_POS,
+    seats,
+  ]);
 
   // Server-driven mode: reconcile `dealingDone` with the wire phase.
   //
@@ -917,6 +942,9 @@ export default function GameRoom({
     setWinnerSeatId(null);
     setWinnerAmount(null);
     setWinnerChipFlight(null);
+    // Re-arm the winner sequence guard so the next round can fire its
+    // payout animation again.
+    winnerSequenceStartedForRoundRef.current = null;
     // Reset the pot count-down so the next round's bank starts at the
     // freshly-seeded ante total rather than the previous winner's 0.
     if (potCountdownRafRef.current != null) {
@@ -1378,6 +1406,16 @@ export default function GameRoom({
       winnerId = winners[0].key;
     }
     if (winnerId === null) return;
+    // Hard guard against duplicate sequences. `seatHands`, `seats`, and
+    // the server snapshot deps all keep changing during the showdown
+    // (card reveals, snapshot reruns, etc.), and each rerun of this
+    // effect previously fired another `playWinnerSound` + chip sweep
+    // + pot tick-down — players saw the pot drain twice and heard two
+    // chord payouts. Cleanup's `clearTimeout` only catches the outer
+    // 800 ms timeout; once it fires the inner timeouts are
+    // uncancellable, so dedupe at the *trigger* instead.
+    if (winnerSequenceStartedForRoundRef.current === winnerId) return;
+    winnerSequenceStartedForRoundRef.current = winnerId;
     // Calculate pot. Prefer the local running tally (antes + bets booked
     // through `triggerBetFlight`) so the win badge matches the bank
     // readout that the player just watched tick down to 0. Falls back to a
