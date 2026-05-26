@@ -1195,6 +1195,25 @@ export default function GameRoom({
   const { reactions, showReaction, audio } = useChatReactions(settings.sound);
   audioRef.current = audio;
 
+  // Local seat ids that the server marks as folded for the current round.
+  // Used by handleShowdown to skip folded players when populating the
+  // face-up reveal map, and by the showdown effect to detect win-by-fold
+  // (only one active seat remaining) so it can suppress the reveal
+  // entirely — by Svara rules the winner takes the pot without showing.
+  const foldedSeatKeys = useMemo<Set<string>>(() => {
+    const set = new Set<string>();
+    if (!serverDriven) return set;
+    for (const [serverPosId, serverSeat] of Object.entries(realSeats ?? {})) {
+      if (!serverSeat.folded) continue;
+      const anchor = SEATID_TO_POS[serverPosId];
+      if (!anchor) continue;
+      const localSeat = seats.find((s) => s.pos === anchor);
+      if (localSeat?.id == null) continue;
+      set.add(String(localSeat.id));
+    }
+    return set;
+  }, [serverDriven, realSeats, SEATID_TO_POS, seats]);
+
   // Per-local-seat hand pinned by the server. Each `realSeats` entry is
   // keyed by the server position ("1".. "6"); we walk the rotated
   // `SEATID_TO_POS` map to find the matching display anchor and resolve
@@ -1271,6 +1290,11 @@ export default function GameRoom({
       for (const s of seats) {
         if (s.empty || s.id == null) continue;
         const key = String(s.id);
+        // Folded players never get their cards opened — by Svara rules
+        // a thrown hand stays thrown. Skip them entirely so the seat
+        // doesn't get a face-up fan painted back on top of the fold
+        // animation.
+        if (foldedSeatKeys.has(key)) continue;
         // Server hand always wins — it's the authoritative reveal data.
         if (serverHandsBySeatId[key]) {
           next[key] = serverHandsBySeatId[key];
@@ -1295,7 +1319,7 @@ export default function GameRoom({
         } catch {}
       }, HAND_ENTER_DURATION_MS),
     );
-  }, [seats, myHand, audio, serverHandsBySeatId]);
+  }, [seats, myHand, audio, serverHandsBySeatId, foldedSeatKeys]);
 
   // Auto-fire the showdown when the server transitions into the showdown
   // phase (svarapro `status === 'showdown' | 'finished' | 'svara' |
@@ -1307,8 +1331,19 @@ export default function GameRoom({
     if (!serverDriven) return;
     if (serverPhase !== 'showdown') return;
     if (showdown) return;
+    // Win-by-fold path: every opponent folded and the lone survivor takes
+    // the pot without showing cards. Flip `showdown` so the winner
+    // sequence (crown + chip sweep + win-amount badge) still fires, but
+    // skip `handleShowdown` so nobody's hand is painted face-up.
+    const activeServerSeats = Object.values(realSeats ?? {}).filter(
+      (s) => !s.folded,
+    );
+    if (activeServerSeats.length <= 1) {
+      setShowdown(true);
+      return;
+    }
     handleShowdown();
-  }, [serverDriven, serverPhase, showdown, handleShowdown]);
+  }, [serverDriven, serverPhase, showdown, realSeats, handleShowdown]);
 
   // Svara demo — force a tie at showdown. Picks the first 2-3 occupied
   // seats (preferring the me-seat so the local player gets the join/decline

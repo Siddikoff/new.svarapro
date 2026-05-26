@@ -103,7 +103,11 @@ export const adaptPlayerToSeat = (
   if (typeof player.score === 'number' && player.score > 0) {
     seat.score = player.score;
   }
-  if (reveal && player.cards.length > 0) {
+  // Folded players keep their cards face-down even at showdown — by Svara
+  // rules a hand is only revealed if its owner stayed in the round and made
+  // it to the actual comparison. Skipping the `hand` here keeps `seat.hand`
+  // unset for folded seats so the client never paints them face-up.
+  if (reveal && !player.hasFolded && player.cards.length > 0) {
     seat.hand = player.cards.map(adaptCard);
   }
   return seat;
