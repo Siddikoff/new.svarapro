@@ -545,6 +545,14 @@ export default function GameRoom({
   // True after the me-seat auto-folds (timeout pass) — hides dealt cards.
   const [myAutoFolded, setMyAutoFolded] = useState<boolean>(false);
 
+  // Ref mirror of the local player's seat key. The turn-timer effect below
+  // is declared before `mySeatKey` itself, so its closure cannot capture
+  // the value directly. We assign through this ref during render (see
+  // further down) so the auto-pass guard inside `fireAutoPass` can compare
+  // the active turn to the local seat — without this guard, an opponent's
+  // expired turn timer would fold the local player.
+  const mySeatKeyRef = useRef<string | null>(null);
+
   // Bag of pending one-shot timers spawned from callbacks (fold cleanup,
   // post-flight bar swap, card-open sound). They're cleared on unmount so a
   // late `setState` can't fire on a dead component.
@@ -682,6 +690,13 @@ export default function GameRoom({
     const fireAutoPass = () => {
       if (autoPassedRef.current) return;
       autoPassedRef.current = true;
+      // Only auto-fold the local player when *their* turn timer expired.
+      // For opponents the server is authoritative — firing handlePass
+      // here would send a `fold` action on behalf of the local player,
+      // which is exactly the bug we hit in production: when an opponent's
+      // clock ran out, every other client folded itself.
+      const meKey = mySeatKeyRef.current;
+      if (meKey === null || activeTurnSeatId !== meKey) return;
       handlePassRef.current?.();
     };
 
@@ -813,6 +828,17 @@ export default function GameRoom({
     if (serverPhase === 'idle') {
       setDealingDone(false);
       setMyAutoFolded(false);
+      // Round is over and the felt is empty — tear down the face-down
+      // cards so the next round starts with the ante toss only.
+      setCardsDealing(false);
+      return;
+    }
+    if (serverPhase === 'round_end') {
+      // Showdown is finished and the server is about to start the next
+      // round. Drop the face-down stack now so the next deal animation
+      // gets a clean slate; `dealingDone` stays true so the action bar
+      // doesn't blink mid-payout.
+      setCardsDealing(false);
       return;
     }
     if (serverPhase === 'dealing') {
@@ -859,9 +885,13 @@ export default function GameRoom({
     const falling = !showDealing && prevShowDealingRef.current;
     prevShowDealingRef.current = showDealing;
     if (falling) {
-      // Round ended — close the deal gate so the next round starts with the
-      // ante toss only (no deck visible yet).
-      setCardsDealing(false);
+      // The `showDealing` flag falls when the server transitions out of
+      // `dealing` (e.g. into `betting`) — NOT when the round itself ends.
+      // Resetting `cardsDealing` here would unmount the face-down cards in
+      // the middle of the round (visible bug: 3 closed cards vanish a few
+      // seconds after the deal animation). The actual reset happens in
+      // the server-phase effect below when the phase reaches `idle` /
+      // `round_end`, which is the real round boundary.
       return;
     }
     if (!rising) return;
@@ -995,6 +1025,8 @@ export default function GameRoom({
   const mySeat = seats.find((sx) => sx.me);
   const mySeatId: string | number | null = mySeat?.id ?? null;
   const mySeatKey: string | null = mySeatId == null ? null : String(mySeatId);
+  // Mirror into the ref read by the turn-timer auto-pass guard.
+  mySeatKeyRef.current = mySeatKey;
 
   // True when the server's `currentPlayerIndex` (translated through the
   // adapter and the rotation map into our local seat id) matches the
