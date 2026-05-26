@@ -963,7 +963,18 @@ export default function GameRoom({
     const dealt: Record<string, Card[]> = {};
     for (const s of seats) {
       if (s.empty || s.id == null) continue;
-      dealt[String(s.id)] = s.me ? myDealt : dealHand();
+      if (s.me) {
+        dealt[String(s.id)] = myDealt;
+      } else if (!serverDriven) {
+        // Mock / demo mode: pre-seed opponent hands so the dev menu's
+        // «Vskryt' vsekh» (Open All) demo can reveal stable cards. In
+        // server-driven mode opponent hands MUST come from the server
+        // snapshot — otherwise these random placeholders leak through
+        // as face-up reveals the moment `showdown` flips true (e.g.
+        // when a player wins by fold), which is the «cards open after
+        // pass» production bug.
+        dealt[String(s.id)] = dealHand();
+      }
     }
     setSeatHands(dealt);
     setShowdown(false);

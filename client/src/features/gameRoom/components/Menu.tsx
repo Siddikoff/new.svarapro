@@ -469,7 +469,7 @@ function HeaderImpl({ roomNum, onMenu, theme, t, topPadding = 14, sidePadding = 
           className={styles.roomBadgeText}
           style={{ color: isLight ? '#17212b' : BRAND.white }}
         >
-          №{roomNum}
+          №{roomNum} · v3
         </span>
       </div>
       <button
