@@ -60,6 +60,7 @@ import * as Joi from 'joi';
         redis: {
           host: config.get<string>('REDIS_HOST'),
           port: config.get<number>('REDIS_PORT'),
+          password: config.get<string>('REDIS_PASSWORD') || undefined,
         },
       }),
       inject: [ConfigService],
