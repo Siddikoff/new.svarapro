@@ -40,7 +40,10 @@ export const useBootstrap = (): void => {
         userData: tgUser
           ? {
               username: tgUser.username ?? tgUser.first_name ?? 'Unknown',
-              avatar: tgUser.photo_url ?? '',
+              // Server reads `userData.photo_url` and stores it on the
+              // Player. Sending it as `avatar` would land on the server
+              // as `undefined` and the UI would fall back to a stand-in.
+              photo_url: tgUser.photo_url ?? '',
             }
           : null,
       });

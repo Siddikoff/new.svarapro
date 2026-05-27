@@ -44,6 +44,7 @@ export interface SeatOverlayData {
   stack?: string | number;
   photo?: string | number;
   empty?: boolean;
+  dealer?: boolean;
 }
 
 export interface UseSeatRotationOptions {
@@ -257,6 +258,7 @@ export function useSeatRotation({
           ...(mySeat.name != null ? { name: mySeat.name } : {}),
           ...(mySeat.stack != null ? { stack: mySeat.stack } : {}),
           ...(mySeat.photo != null ? { photo: mySeat.photo } : {}),
+          dealer: !!mySeat.dealer,
         };
       }
       if (emptyPositionsBase.has(s.pos) && s.pos !== chosenPos) {
@@ -280,6 +282,7 @@ export function useSeatRotation({
         ...(overlay.name != null ? { name: overlay.name } : {}),
         ...(overlay.stack != null ? { stack: overlay.stack } : {}),
         ...(overlay.photo != null ? { photo: overlay.photo } : {}),
+        dealer: !!overlay.dealer,
       };
     });
   }, [spectator, chosenPos, joinedMidDeal, baseSeats, emptyPositionsBase, mySeat, otherSeats]);
@@ -345,16 +348,24 @@ export function useSeatRotation({
     setJoinedMidDeal(false);
   }, [room?.id]);
 
-  const activeDealOrder = useMemo<SeatAnchorPos[]>(
-    () =>
-      rotationOrder.filter((pos) =>
-        seats.some(
-          (seat) =>
-            !seat.empty && !(seat.me && joinedMidDeal) && getDisplayPos(seat.pos) === pos,
-        ),
+  const activeDealOrder = useMemo<SeatAnchorPos[]>(() => {
+    const active = rotationOrder.filter((pos) =>
+      seats.some(
+        (seat) =>
+          !seat.empty && !(seat.me && joinedMidDeal) && getDisplayPos(seat.pos) === pos,
       ),
-    [seats, getDisplayPos, joinedMidDeal, rotationOrder],
-  );
+    );
+    // Rotate so dealing starts from the seat to the LEFT of the dealer
+    // (first seat clockwise after the dealer). This matches Svara rules
+    // where the banker deals to the player on their left first.
+    const dealerSeat = seats.find((s) => s.dealer);
+    if (!dealerSeat) return active;
+    const dealerDisplayPos = getDisplayPos(dealerSeat.pos);
+    const dealerIdx = active.indexOf(dealerDisplayPos);
+    if (dealerIdx < 0) return active;
+    const startIdx = (dealerIdx + 1) % active.length;
+    return [...active.slice(startIdx), ...active.slice(0, startIdx)];
+  }, [seats, getDisplayPos, joinedMidDeal, rotationOrder]);
 
   const showDealing = dealing && !waitForNextRound && (!chosenPos || joinedMidDeal);
 

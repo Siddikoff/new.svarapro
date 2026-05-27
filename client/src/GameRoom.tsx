@@ -15,6 +15,7 @@ import { GameRoomKeyframes } from './features/gameRoom/components/GameRoomKeyfra
 import { ConfirmExit, GameMenu, Header } from './features/gameRoom/components/Menu';
 import { PotView } from './features/gameRoom/components/PotView';
 import { RaiseSheet } from './features/gameRoom/components/RaiseSheet';
+import type { SeatActionLabel, SeatActionTone } from './features/gameRoom/components/Seat';
 import { SeatsLayer, type SeatsLayerSeat } from './features/gameRoom/components/SeatsLayer';
 import {
   SvaraBanner,
@@ -199,7 +200,7 @@ export default function GameRoom({
   // disagree with the backend on those hands).
   const serverWinnerSeatId = useGameStore((state) => state.winnerId);
 
-  const mySeatOverlay = useMemo(() => {
+  const mySeatOverlayBase = useMemo(() => {
     if (!authUser) return null;
     const name =
       authUser.username && authUser.username.trim()
@@ -252,6 +253,19 @@ export default function GameRoom({
     return null;
   }, [realSeats, selfTelegramId]);
 
+  const mySeatOverlay = useMemo(() => {
+    if (!mySeatOverlayBase) return null;
+    const mySvrSeat = myServerSeatId ? (realSeats ?? {})[myServerSeatId] : undefined;
+    // Prefer the server-side in-game balance over authUser.balance so
+    // the nameplate updates immediately after bets/antes are deducted
+    // (the server publishes game_update before balanceUpdated fires).
+    const serverStack = mySvrSeat?.stack;
+    const stack = typeof serverStack === 'number'
+      ? `$${serverStack.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+      : mySeatOverlayBase.stack;
+    return { ...mySeatOverlayBase, stack, dealer: !!mySvrSeat?.dealer };
+  }, [mySeatOverlayBase, myServerSeatId, realSeats]);
+
   // Build the dynamic server-position → table-anchor mapping rotated so
   // that the local player's server position lands at `bottom`. Without
   // this rotation, every client would see the same hard-coded mapping
@@ -286,7 +300,7 @@ export default function GameRoom({
   // `bottom`), so we explicitly skip our own seat to avoid rendering
   // ourselves in two places at once.
   const otherSeatsOverlay = useMemo(() => {
-    const map: Partial<Record<SeatAnchorPos, { name?: string; stack?: string; photo?: string | number }>> = {};
+    const map: Partial<Record<SeatAnchorPos, { name?: string; stack?: string; photo?: string | number; dealer?: boolean }>> = {};
     for (const [seatId, seat] of Object.entries(realSeats ?? {})) {
       // Skip the local player — their data is overlaid on `bottom` by
       // `mySeatOverlay` further up. Comparing by telegramId is the
@@ -309,6 +323,7 @@ export default function GameRoom({
         name: seat.name,
         stack: stackStr,
         photo: seat.photo,
+        dealer: !!seat.dealer,
       };
     }
     return map;
@@ -457,6 +472,15 @@ export default function GameRoom({
   // the seat layout rotates mid-animation. The same map will be driven by
   // backend events later (one per player who folds).
   const [foldingSeats, setFoldingSeats] = useState<FoldingMap>({});
+  // Tracks which seats have already had their fold-toward-centre animation
+  // fired for the current round. Without this guard the local-player path
+  // (`handlePass` → `triggerSeatFold`) and the bridge effect below that
+  // mirrors server `seat.folded` snapshots into the same animation would
+  // both fire for the me-seat, restarting the overlay mid-flight; for
+  // opponent seats we'd also retrigger on every snapshot that still
+  // reports them as folded. Cleared at the start of each new round
+  // alongside `setFoldingSeats({})`.
+  const triggeredFoldSeatsRef = useRef<Set<string>>(new Set());
   // Свара state — populated when two or more seats share the top score at
   // showdown. `svaraSeatIds` keys are stringified seat.id (matches the
   // showdown `seatHands` keys). `myDecision` toggles between null /
@@ -552,6 +576,13 @@ export default function GameRoom({
   // the active turn to the local seat — without this guard, an opponent's
   // expired turn timer would fold the local player.
   const mySeatKeyRef = useRef<string | null>(null);
+  // Seat key the local player held when they fired an action (blind /
+  // call / raise). Used to suppress the brief snapshot window where the
+  // server still reports the active seat as ours — without this the
+  // action bar would flash back on between our optimistic hide and the
+  // server's "next player" snapshot. Cleared as soon as the server
+  // reports the active seat is no longer ours.
+  const pendingActionTurnRef = useRef<string | null>(null);
 
   // Bag of pending one-shot timers spawned from callbacks (fold cleanup,
   // post-flight bar swap, card-open sound). They're cleared on unmount so a
@@ -588,7 +619,7 @@ export default function GameRoom({
     // counter clicks to 0" beat in the reference. Total window matches
     // `chipFlightTotalMs` in the showdown effect (cluster spread + per
     // chip duration).
-    const duration = 200 + 1800 + 220;
+    const duration = 200 + 1400 + 180;
     const start = performance.now();
     setPotCountdown(startPot);
     const tick = (now: number) => {
@@ -675,15 +706,34 @@ export default function GameRoom({
     turnStartRef.current = performance.now() - initialElapsed;
     setTurnTimerProgress(initialRemainingMs / turnDurationMs);
 
-    // Sound + vibration on turn start. Guard with a ref so the chord only
-    // plays once per turn even if the effect runs twice (StrictMode, or
-    // synthetic re-renders that don't change `activeTurnSeatId`).
+    // Sound + vibration on turn start — only for the local player. Without
+    // this guard every opponent's turn change played the chord and buzzed
+    // the local device, which was indistinguishable from "it's my turn"
+    // and trained players to ignore the cue. We still record
+    // `lastTurnSoundIdRef` for *any* turn change so the «my turn» chord
+    // doesn't replay if the same seat reappears as the active seat after
+    // a brief intermediate state.
+    const isLocalTurn =
+      mySeatKeyRef.current !== null &&
+      activeTurnSeatId === mySeatKeyRef.current;
     if (lastTurnSoundIdRef.current !== activeTurnSeatId) {
+      const isFirstTurnAfterDeal = lastTurnSoundIdRef.current === null;
       lastTurnSoundIdRef.current = activeTurnSeatId;
-      hapticTap();
-      if (audioRef.current?.soundRef.current) {
-        const ctx = audioRef.current.ensureCtx();
-        if (ctx) playTurnStartSound(ctx);
+      if (isLocalTurn || isFirstTurnAfterDeal) {
+        if (isLocalTurn) hapticTap();
+        if (audioRef.current?.soundRef.current) {
+          const ctx = audioRef.current.ensureCtx();
+          if (ctx) {
+            // Resume suspended AudioContext (mobile autoplay policy) and
+            // play after the context is actually running so the sound
+            // never silently drops.
+            if (ctx.state === 'suspended') {
+              ctx.resume().then(() => playTurnStartSound(ctx)).catch(() => {});
+            } else {
+              playTurnStartSound(ctx);
+            }
+          }
+        }
       }
     }
 
@@ -771,6 +821,7 @@ export default function GameRoom({
   useEffect(() => {
     if (!serverDriven) return;
     if (serverActiveSeatId === null) {
+      pendingActionTurnRef.current = null;
       setActiveTurnSeatId(null);
       return;
     }
@@ -791,7 +842,22 @@ export default function GameRoom({
       return;
     }
     const localSeat = seats.find((s) => s.pos === anchor);
-    setActiveTurnSeatId(localSeat?.id != null ? String(localSeat.id) : null);
+    const resolvedKey =
+      localSeat?.id != null ? String(localSeat.id) : null;
+    // If we just fired an action and the server's snapshot still has
+    // us as the active seat (race between our `sendGameAction` and the
+    // server pushing the post-action state), keep the bar hidden until
+    // the server moves on. The next snapshot where `activeSeatId` is no
+    // longer ours clears the gate and normal sync resumes.
+    if (
+      pendingActionTurnRef.current !== null &&
+      resolvedKey !== null &&
+      resolvedKey === pendingActionTurnRef.current
+    ) {
+      return;
+    }
+    pendingActionTurnRef.current = null;
+    setActiveTurnSeatId(resolvedKey);
   }, [
     serverDriven,
     serverActiveSeatId,
@@ -831,6 +897,9 @@ export default function GameRoom({
       // Round is over and the felt is empty — tear down the face-down
       // cards so the next round starts with the ante toss only.
       setCardsDealing(false);
+      // Reset so the first turn of the next round triggers the
+      // deal-complete sound.
+      lastTurnSoundIdRef.current = null;
       return;
     }
     if (serverPhase === 'round_end') {
@@ -839,6 +908,9 @@ export default function GameRoom({
       // gets a clean slate; `dealingDone` stays true so the action bar
       // doesn't blink mid-payout.
       setCardsDealing(false);
+      // Also reset the turn-sound ref here so the first turn of the
+      // next round fires even if the phase skips `idle`.
+      lastTurnSoundIdRef.current = null;
       return;
     }
     if (serverPhase === 'dealing') {
@@ -899,6 +971,10 @@ export default function GameRoom({
     setBetFlights([]);
     betPileSlotRef.current = 0;
     const occupied = seats.filter((s) => !s.empty && s.id != null).length;
+    // Don't run ante/deal animation or sounds when fewer than 2 players
+    // are seated — this avoids phantom dealing sounds when a player
+    // leaves the room and the phase briefly transitions through a deal.
+    if (occupied < 2) return;
     // Ante puts one chip per occupied seat into the bank pile; the bank
     // counter starts from there and grows with every subsequent bet flight.
     bankChipCountRef.current = Math.min(MAX_VISIBLE_BET_PILE_SLOTS, occupied);
@@ -980,6 +1056,7 @@ export default function GameRoom({
     setShowdown(false);
     setCardsOpened(false);
     setFoldingSeats({});
+    triggeredFoldSeatsRef.current = new Set();
     setWinnerSeatId(null);
     setWinnerAmount(null);
     setWinnerChipFlight(null);
@@ -1004,13 +1081,17 @@ export default function GameRoom({
 
   // Generic fold trigger — works for any seat. Adds an entry to
   // `foldingSeats` and schedules its removal after the animation finishes.
-  // Backend integration: call this from a WS handler with the folding
-  // player's seat. `faceUp` controls whether to render the face-up fan (the
-  // me-seat with cards open) or just card backs (everyone else).
+  // Idempotent per-round via `triggeredFoldSeatsRef`: the bridge effect
+  // below mirrors every server `seat.folded` snapshot into this call, so
+  // we must short-circuit when the seat already has an active (or just-
+  // finished) overlay — otherwise the same fold would replay on every
+  // subsequent snapshot that still carries the folded flag.
   const triggerSeatFold = useCallback(
     ({ seat }: { seat: RotationSeat | null | undefined }) => {
       if (!seat || seat.id == null) return;
       const seatId = String(seat.id);
+      if (triggeredFoldSeatsRef.current.has(seatId)) return;
+      triggeredFoldSeatsRef.current.add(seatId);
       const displayPos = getDisplayPos(seat.pos);
       // The overlay always renders a small face-down pile (no flip), so we
       // don't need to snapshot the open hand here — the visual is identical
@@ -1141,21 +1222,45 @@ export default function GameRoom({
       : serverMinBet || blindAmount
     : blindAmount;
 
+  // Clear the local turn ring + action-bar gate the moment we fire an
+  // action so the buttons disappear instantly (matches `handlePass`).
+  // Without this the bar stays on screen until the server's next snapshot
+  // updates `activeSeatId` — noticeable as a stuck "Вслепую" button
+  // after tapping it. The server-driven effect later re-applies the
+  // authoritative seat (or `null` once it's no longer our turn), so we
+  // never get stuck in the opposite direction either.
+  const handOffTurnLocally = useCallback(() => {
+    // Latch the seat we held when firing the action so the
+    // server-sync effect ignores any echoing snapshot where the
+    // active seat is still ours (the server hadn't yet advanced to
+    // the next player). Cleared the moment the server reports a
+    // different active seat.
+    pendingActionTurnRef.current = mySeatKeyRef.current;
+    setActiveTurnSeatId(null);
+    cancelAnimationFrame(turnRafRef.current);
+    if (turnTimeoutRef.current != null) {
+      clearTimeout(turnTimeoutRef.current);
+      turnTimeoutRef.current = null;
+    }
+  }, []);
+
   const handleBlindBet = useCallback(() => {
     hapticTap();
     triggerBetFlight(blindBetAmount);
+    handOffTurnLocally();
     if (room?.id !== undefined) {
       sendGameAction(String(room.id), 'blind_bet', blindBetAmount);
     }
-  }, [room?.id, blindBetAmount, triggerBetFlight]);
+  }, [room?.id, blindBetAmount, triggerBetFlight, handOffTurnLocally]);
 
   const handleCall = useCallback(() => {
     hapticTap();
     triggerBetFlight(callAmount);
+    handOffTurnLocally();
     if (room?.id !== undefined) {
       sendGameAction(String(room.id), 'call', callAmount);
     }
-  }, [room?.id, callAmount, triggerBetFlight]);
+  }, [room?.id, callAmount, triggerBetFlight, handOffTurnLocally]);
 
   const handleRaise = useCallback(() => {
     hapticTap();
@@ -1166,16 +1271,21 @@ export default function GameRoom({
     (amount: number) => {
       setRaiseOpen(false);
       triggerBetFlight(amount);
+      handOffTurnLocally();
       if (room?.id !== undefined) {
         sendGameAction(String(room.id), 'raise', amount);
       }
     },
-    [room?.id, triggerBetFlight],
+    [room?.id, triggerBetFlight, handOffTurnLocally],
   );
 
   const handlePass = useCallback(() => {
     hapticTap();
-    // Stop the turn timer (both RAF and the setTimeout backup).
+    // Stop the turn timer (both RAF and the setTimeout backup) and
+    // latch the local seat so the server's echo snapshot can't
+    // briefly re-show the bar before the next player's turn lands
+    // (same guard as `handOffTurnLocally`).
+    pendingActionTurnRef.current = mySeatKeyRef.current;
     setActiveTurnSeatId(null);
     cancelAnimationFrame(turnRafRef.current);
     if (turnTimeoutRef.current != null) {
@@ -1224,6 +1334,25 @@ export default function GameRoom({
     }
     return set;
   }, [serverDriven, realSeats, SEATID_TO_POS, seats]);
+
+  // Bridge server-side fold events to the fold-toward-centre animation.
+  // The local pass path (`handlePass` → `triggerSeatFold`) only covers the
+  // me-seat; opponents that fold (manually or via the server's auto-pass
+  // on turn timeout) used to silently flip `seat.folded = true` with no
+  // visual transition, so their cards just disappeared. We watch
+  // `foldedSeatKeys` and fire `triggerSeatFold` for every seat that's
+  // newly folded — the guard inside `triggerSeatFold` makes this
+  // idempotent so the me-seat's own pre-server-echo trigger doesn't
+  // replay when the snapshot eventually confirms the fold.
+  useEffect(() => {
+    if (foldedSeatKeys.size === 0) return;
+    for (const seatKey of foldedSeatKeys) {
+      if (triggeredFoldSeatsRef.current.has(seatKey)) continue;
+      const seat = seats.find((s) => s.id != null && String(s.id) === seatKey);
+      if (!seat) continue;
+      triggerSeatFold({ seat });
+    }
+  }, [foldedSeatKeys, seats, triggerSeatFold]);
 
   // Per-local-seat hand pinned by the server. Each `realSeats` entry is
   // keyed by the server position ("1".. "6"); we walk the rotated
@@ -1312,7 +1441,18 @@ export default function GameRoom({
           continue;
         }
         if (next[key]) continue;
-        next[key] = s.me ? myHand : dealHand();
+        if (s.me) {
+          next[key] = myHand;
+          continue;
+        }
+        // Server-driven mode: never invent random opponent hands. If the
+        // snapshot hasn't shipped a hand for this seat yet, leave it
+        // unset — the seat keeps its face-down cards until the next
+        // snapshot lands with the real hand. Inventing cards here used
+        // to leak fake reveals into the showdown and false-positive
+        // ties through `svaraHandScore`.
+        if (serverDriven) continue;
+        next[key] = dealHand();
       }
       return next;
     });
@@ -1330,7 +1470,7 @@ export default function GameRoom({
         } catch {}
       }, HAND_ENTER_DURATION_MS),
     );
-  }, [seats, myHand, audio, serverHandsBySeatId, foldedSeatKeys]);
+  }, [seats, myHand, audio, serverHandsBySeatId, foldedSeatKeys, serverDriven]);
 
   // Auto-fire the showdown when the server transitions into the showdown
   // phase (svarapro `status === 'showdown' | 'finished' | 'svara' |
@@ -1356,76 +1496,6 @@ export default function GameRoom({
     handleShowdown();
   }, [serverDriven, serverPhase, showdown, realSeats, handleShowdown]);
 
-  // Svara demo — force a tie at showdown. Picks the first 2-3 occupied
-  // seats (preferring the me-seat so the local player gets the join/decline
-  // buttons) and gives them the same easy-to-tie 3-card hand. The
-  // remaining seats keep a random hand so the tied seats stand out clearly.
-  // Will go away once the backend ROUND_RESULT carries real per-seat hands.
-  const handleSvaraDemo = useCallback(() => {
-    hapticTap();
-    setMenuOpen(false);
-    // High-suit 31-of-spades hand: A♠+K♠+10♠ scores 11+10+10 = 31. We use
-    // an identical hand for every tied seat so duplicate cards don't matter
-    // (the same caveat applies to the existing showdown demo).
-    const tiedHand: Card[] = [
-      { rank: 'A', suit: 'spade' },
-      { rank: 'K', suit: 'spade' },
-      { rank: '10', suit: 'spade' },
-    ];
-    const occupied = seats.filter((s) => !s.empty && s.id != null);
-    if (occupied.length < 2) return;
-    // Prefer the me-seat first so the local player sees the join/decline
-    // buttons; then fill up to three tied seats from the rest.
-    const ordered = [
-      ...occupied.filter((s) => s.me),
-      ...occupied.filter((s) => !s.me),
-    ];
-    const tieCount = Math.min(3, ordered.length);
-    const tiedKeys = new Set<string>();
-    const dealt: Record<string, Card[]> = {};
-    for (let i = 0; i < ordered.length; i += 1) {
-      const s = ordered[i];
-      if (s.id == null) continue;
-      const key = String(s.id);
-      if (i < tieCount) {
-        dealt[key] = tiedHand;
-        tiedKeys.add(key);
-      } else {
-        // Non-tied seats get a fresh random hand; on the rare chance it
-        // also scores 31 of spades the visual still reads correctly (they
-        // would just have ended up in the tie anyway).
-        dealt[key] = dealHand();
-      }
-    }
-    // Keep `myHand` in sync if the me-seat is part of the tie so the
-    // post-open card art matches the showdown reveal exactly.
-    const meKey = mySeatKey;
-    if (meKey && dealt[meKey]) {
-      setMyHand(dealt[meKey]);
-    }
-    setSeatHands(dealt);
-    setShowdown(true);
-    setCardsOpened(true);
-    // Pin tied seats immediately so their score-chips/badges paint as
-    // gold (and start the blink) the moment they animate in. The on-table
-    // SVARA splash itself is held back via `svaraBannerVisible` so the
-    // player still gets a beat with the cards before the title appears.
-    setSvaraSeatIds(tiedKeys);
-    setSvaraDecision(null);
-    setSvaraPhase('announce');
-    setSvaraBannerVisible(false);
-    timerRefs.current.push(
-      setTimeout(() => {
-        if (!audio.soundRef.current) return;
-        const ctx = audio.ensureCtx();
-        if (!ctx) return;
-        try {
-          playCardOpenSound(ctx);
-        } catch {}
-      }, HAND_ENTER_DURATION_MS),
-    );
-  }, [seats, mySeatKey, audio]);
-
   // Auto-detect Свара after a normal showdown. Walks every revealed hand,
   // finds the top score, and — if two or more seats share that top score —
   // pins them as Svara participants right away. Score-chips/badges read
@@ -1434,8 +1504,17 @@ export default function GameRoom({
   // The big SVARA splash on the felt is delayed separately via
   // `svaraBannerVisible` below. Skips work when the showdown demo already
   // set `svaraSeatIds` (Svara demo) or no showdown is in flight.
+  //
+  // In server-driven mode this local detector is a no-op: the backend is
+  // the authoritative source of ties (status === 'svara_pending' with
+  // `winners[]` populated) and the dedicated effect below promotes that
+  // into `svaraSeatIds`. Without this guard the buggy client-side
+  // `svaraHandScore` (no joker / two-7s / two-aces / three-7s handling)
+  // would invent ties at showdown when scores aren't actually equal,
+  // declaring a spurious Svara on top of a normal single-winner pot.
   useEffect(() => {
     if (!showdown) return;
+    if (serverDriven) return;
     if (svaraSeatIds.size > 0) return;
     const scored: Array<{ key: string; score: number }> = [];
     for (const [key, hand] of Object.entries(seatHands)) {
@@ -1450,7 +1529,7 @@ export default function GameRoom({
     setSvaraDecision(null);
     setSvaraPhase('announce');
     setSvaraBannerVisible(false);
-  }, [showdown, seatHands, svaraSeatIds.size]);
+  }, [showdown, serverDriven, seatHands, svaraSeatIds.size]);
 
   // Detect the winner after showdown: the single highest scorer.
   // Skipped when a Svara tie is detected (tied seats get the Svara flow).
@@ -1500,14 +1579,30 @@ export default function GameRoom({
     // uncancellable, so dedupe at the *trigger* instead.
     if (winnerSequenceStartedForRoundRef.current === winnerId) return;
     winnerSequenceStartedForRoundRef.current = winnerId;
-    // Calculate pot. Prefer the local running tally (antes + bets booked
-    // through `triggerBetFlight`) so the win badge matches the bank
-    // readout that the player just watched tick down to 0. Falls back to a
-    // bare per-seat mock when nothing has been booked locally.
+    // Server-driven win amount, captured by position so the final badge
+    // can read the *authoritative* payout (pot − rake, or per-share for
+    // split / Svara pots). Without this we'd display the locally
+    // accumulated bank, which doesn't account for the server-side rake
+    // and could drift from the actual balance change the player just
+    // received. `winnerServerPosId` is the server's numeric position
+    // ("1".."6") — same key shape as `realSeats`.
+    const winnerServerPosId =
+      serverDriven && serverWinnerSeatId !== null && serverWinnerSeatId !== undefined
+        ? String(serverWinnerSeatId)
+        : null;
+    // Calculate pot. Prefer the server-authoritative pot stored in
+    // `gameStore` — it reflects every ante + bet the backend recorded,
+    // including opponent bets that `triggerBetFlight` (local only) never
+    // sees. Falls back to the local running tally (useful in the
+    // offline / mock demo) and finally to a bare per-seat mock when
+    // nothing else is available.
+    const serverPotNow = useGameStore.getState().pot;
     const pot =
-      localPotRef.current > 0
-        ? localPotRef.current
-        : seats.filter((s) => !s.empty).length * ANTE_PER_SEAT_DEMO;
+      typeof serverPotNow === 'number' && serverPotNow > 0
+        ? serverPotNow
+        : localPotRef.current > 0
+          ? localPotRef.current
+          : seats.filter((s) => !s.empty).length * ANTE_PER_SEAT_DEMO;
     pendingPotRef.current = pot;
     // Drives both the chip-clink cascade sound and the total flight
     // window. `WinnerChipsOverlay` staggers each chip by
@@ -1528,7 +1623,7 @@ export default function GameRoom({
     // the bet flight (see WINNER_CHIP_DURATION_MS in
     // WinnerChipsOverlay.tsx). Total flight window = cluster spread
     // (~200 ms) + one per-chip flight.
-    const WINNER_CHIP_DURATION_MS = 1800;
+    const WINNER_CHIP_DURATION_MS = 1400;
     const WINNER_CLUSTER_SPREAD_MS = 200;
     const chipFlightTotalMs =
       WINNER_CLUSTER_SPREAD_MS + WINNER_CHIP_DURATION_MS;
@@ -1578,7 +1673,37 @@ export default function GameRoom({
           timerRefs.current.push(
             setTimeout(() => {
               setWinnerChipFlight(null);
-              setWinnerAmount(`+$${pendingPotRef.current}`);
+              // Prefer the server-authoritative payout (set by
+              // `distributeWinnings` and surfaced through the adapter as
+              // `seat.lastWinAmount`). Re-read from the store at firing
+              // time so the badge reflects whatever the server actually
+              // credited — by the time this timeout runs the showdown
+              // snapshot has long arrived. Fall back to the locally
+              // accumulated `pendingPotRef` for the offline / mock path
+              // or if the server payload didn't include the amount.
+              let serverAmount: number | null = null;
+              if (winnerServerPosId) {
+                const serverSeat =
+                  useGameStore.getState().seats?.[winnerServerPosId];
+                if (
+                  serverSeat &&
+                  typeof serverSeat.lastWinAmount === 'number' &&
+                  serverSeat.lastWinAmount > 0
+                ) {
+                  serverAmount = serverSeat.lastWinAmount;
+                }
+              }
+              const amount = serverAmount ?? pendingPotRef.current;
+              // Round to 2 decimals and drop trailing zeros so the badge
+              // reads "$6.65" / "$10" instead of "$6.650000000000091" /
+              // "$10.00". The server-side svara split divides by 2 in
+              // floating point, which is where the long fractional tail
+              // comes from when the pot isn't an even number.
+              const rounded = Math.round(amount * 100) / 100;
+              const display = Number.isInteger(rounded)
+                ? rounded.toFixed(0)
+                : rounded.toFixed(2).replace(/\.?0+$/, '');
+              setWinnerAmount(`+$${display}`);
             }, chipFlightTotalMs + 260),
           );
         }, WINNER_TO_CHIPS_PAUSE_MS),
@@ -1632,17 +1757,13 @@ export default function GameRoom({
 
   const handleSvaraJoin = useCallback(() => {
     hapticTap();
-    triggerBetFlight(blindAmount);
+    const svaraCost = pot > 0 ? pot : blindAmount;
+    triggerBetFlight(svaraCost);
     setSvaraDecision('join');
-    // Tell the server. Action only takes effect while the room is in
-    // `svara_pending` (see `game.service.ts:468-471`) — other phases
-    // produce a `'Недопустимое действие'` toast. The popup is gated
-    // on `svaraActive` so by the time the user can press the button
-    // the server is already in `svara_pending`.
     if (room?.id !== undefined) {
       sendGameAction(String(room.id), 'join_svara');
     }
-  }, [blindAmount, triggerBetFlight, room?.id]);
+  }, [blindAmount, pot, triggerBetFlight, room?.id]);
 
   const handleSvaraDecline = useCallback(() => {
     hapticTap();
@@ -1768,6 +1889,194 @@ export default function GameRoom({
     [mySeatId, room?.id, showReaction],
   );
 
+  /* ── Action labels («Тёмная $10» / «Смотрит» / …) ───────────────────
+   *
+   * Each `game_state` / `game_update` snapshot ships a monotonically
+   * growing `state.log` of `SvaraGameAction` entries. We diff incoming
+   * logs against the last-seen timestamp and surface a transient pill
+   * above the actor's seat for ~2.5 s.
+   *
+   * Filtering rules:
+   *   - skip the entire first snapshot (initial connect / room change);
+   *     we just store the highwater timestamp so subsequent diffs are
+   *     honest. Otherwise a spectator opening a room mid-round would
+   *     get a flood of stale «Тёмная / Пас / …» bubbles
+   *   - skip entries with no `telegramId` or the `'system'` sender
+   *     (phase transitions, round starts, score audits, rake postings)
+   *   - `'join'` is the catch-all log type used for both `sit_down`
+   *     and `joinSvara`; only the svara variant carries the substring
+   *     `«сваре»` in its `message`, so we gate on that to avoid
+   *     painting «В свару» on a regular sit_down.
+   */
+  const [actionLabels, setActionLabels] = useState<Record<string, SeatActionLabel | null>>({});
+  const lastActionLogTsRef = useRef<number>(0);
+  const hasSeenSnapshotRef = useRef<boolean>(false);
+  const actionLabelIdRef = useRef<number>(0);
+  const actionLabelTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  // Monotonic counter that increments each time the server transitions
+  // from `blind_betting` to `betting` — i.e. the first player after the
+  // blind round opens their cards and actually calls/raises (a fold
+  // wouldn't switch the status). Used by Seat to shake all face-down
+  // dealt cards as a visual cue that "everyone's hand is now considered
+  // looked, no more blind betting this round". The previous server
+  // status is tracked in a ref so we only fire on the rising edge.
+  const [cardsRevealPulseId, setCardsRevealPulseId] = useState<number>(0);
+  const prevServerStatusRef = useRef<string | null>(null);
+
+  // Clear pending fade-out timers when the room unmounts so we don't
+  // poke into an unmounted tree if a snapshot lands during teardown.
+  useEffect(() => {
+    return () => {
+      for (const t of Object.values(actionLabelTimeoutsRef.current)) {
+        clearTimeout(t);
+      }
+      actionLabelTimeoutsRef.current = {};
+    };
+  }, []);
+
+  const pushActionLabel = useCallback(
+    (seatKey: string, text: string, tone: SeatActionTone) => {
+    actionLabelIdRef.current += 1;
+    const id = actionLabelIdRef.current;
+    setActionLabels((prev) => ({ ...prev, [seatKey]: { id, text, tone } }));
+    const existing = actionLabelTimeoutsRef.current[seatKey];
+    if (existing) clearTimeout(existing);
+    actionLabelTimeoutsRef.current[seatKey] = setTimeout(() => {
+      setActionLabels((prev) => {
+        const current = prev[seatKey];
+        // A newer action fired in the meantime — leave it alone.
+        if (!current || current.id !== id) return prev;
+        const next = { ...prev };
+        delete next[seatKey];
+        return next;
+      });
+      delete actionLabelTimeoutsRef.current[seatKey];
+    }, 2500);
+  },
+    [],
+  );
+
+  useEffect(() => {
+    const fmtAmount = (n: number): string => {
+      const rounded = Math.round(n * 100) / 100;
+      return Number.isInteger(rounded)
+        ? `$${rounded}`
+        : `$${rounded.toFixed(2)}`;
+    };
+    const describe = (entry: {
+      type: string;
+      amount?: number;
+      message?: string;
+      telegramId?: string;
+    }): { text: string; tone: SeatActionTone } | null => {
+      const amount = typeof entry.amount === 'number' ? entry.amount : null;
+      switch (entry.type) {
+        case 'blind_bet':
+        case 'blind':
+          return {
+            text: amount != null && amount > 0
+              ? `Тёмная ${fmtAmount(amount)}`
+              : 'Тёмная',
+            tone: 'blue',
+          };
+        case 'look':
+          return { text: 'Смотрит', tone: 'blue' };
+        case 'call':
+          return {
+            text: amount != null && amount > 0
+              ? `Уравнял ${fmtAmount(amount)}`
+              : 'Уравнял',
+            tone: 'green',
+          };
+        case 'raise':
+          return {
+            text: amount != null && amount > 0
+              ? `Повысил ${fmtAmount(amount)}`
+              : 'Повысил',
+            tone: 'green',
+          };
+        case 'fold':
+          return { text: 'Пас', tone: 'red' };
+        case 'join':
+          // The server reuses `'join'` for sit-down, rake bookkeeping,
+          // phase transitions, etc. Only the svara-join branch carries
+          // the substring «сваре» in its message; everything else
+          // («сел за стол …», «Комиссия …», …) we ignore.
+          return entry.message && entry.message.includes('сваре')
+            ? { text: 'В свару', tone: 'green' }
+            : null;
+        default:
+          return null;
+      }
+    };
+
+    const unsubscribe = subscribeToGameState((state) => {
+      const log = state.log ?? [];
+      if (log.length === 0) return;
+
+      // On the very first snapshot (initial connect / room change) just
+      // record the highwater timestamp without emitting labels — the log
+      // ships every action since the round began and we don't want a
+      // flood of stale «Тёмная / Пас / …» bubbles popping up the second
+      // a spectator opens the room.
+      if (!hasSeenSnapshotRef.current) {
+        hasSeenSnapshotRef.current = true;
+        let initialMax = 0;
+        for (const e of log) {
+          if (typeof e.timestamp === 'number' && e.timestamp > initialMax) {
+            initialMax = e.timestamp;
+          }
+        }
+        lastActionLogTsRef.current = initialMax;
+        return;
+      }
+
+      const since = lastActionLogTsRef.current;
+      let maxTs = since;
+      for (const entry of log) {
+        const ts = entry.timestamp;
+        if (typeof ts !== 'number' || ts <= since) continue;
+        if (ts > maxTs) maxTs = ts;
+        if (!entry.telegramId || entry.telegramId === 'system') continue;
+        const described = describe(entry);
+        if (!described) continue;
+        const seatId = playerToSeatIdRef.current.get(String(entry.telegramId));
+        if (seatId == null) continue;
+        pushActionLabel(String(seatId), described.text, described.tone);
+      }
+      if (maxTs !== since) lastActionLogTsRef.current = maxTs;
+    });
+    return unsubscribe;
+  }, [pushActionLabel]);
+
+  // Watch the server's `status` transition. Once the round leaves the
+  // `blind_betting` phase into `betting`, the blind window is closed for
+  // everyone — even players who haven't acted yet must call/raise/fold
+  // against an open bet. Fire a one-shot pulse + card-reveal sound so
+  // the table visually acknowledges the switch (Seat shakes every
+  // face-down card it's holding for ~1s).
+  useEffect(() => {
+    const unsubscribe = subscribeToGameState((state) => {
+      const status = state.status;
+      const prev = prevServerStatusRef.current;
+      prevServerStatusRef.current = status;
+      if (prev === 'blind_betting' && status === 'betting') {
+        setCardsRevealPulseId((n) => n + 1);
+        const a = audioRef.current;
+        if (a?.soundRef.current) {
+          const ctx = a.ensureCtx();
+          if (ctx) {
+            try {
+              playCardOpenSound(ctx);
+            } catch {}
+          }
+        }
+      }
+    });
+    return unsubscribe;
+  }, []);
+
   // Render reactions from other players. The server broadcasts each chat
   // message to the room (including the sender), so we filter out the local
   // user to avoid double-firing the bubble that `handleChatPick` already
@@ -1813,6 +2122,7 @@ export default function GameRoom({
   // animation starts (post-ante), not during the chip toss.
   useEffect(() => {
     if (!cardsDealing) return undefined;
+    if (activeDealOrder.length < 2) return undefined;
     const totalDeals = CARDS_PER_SEAT * activeDealOrder.length;
     const timers: ReturnType<typeof setTimeout>[] = [];
     for (let i = 0; i < totalDeals; i++) {
@@ -1871,8 +2181,6 @@ export default function GameRoom({
           vibration={settings.vibration}
           onToggleVibration={settings.toggleVibration}
 
-          onShowdown={spectator ? undefined : handleShowdown}
-          onSvaraDemo={spectator ? undefined : handleSvaraDemo}
           onExit={() => {
             setMenuOpen(false);
             setConfirmExit(true);
@@ -1922,7 +2230,10 @@ export default function GameRoom({
             )}
 
             {cardsDealing && activeDealOrder.length > 0 && (
-              <CenterDeck totalDeals={CARDS_PER_SEAT * activeDealOrder.length} />
+              <CenterDeck
+                totalDeals={CARDS_PER_SEAT * activeDealOrder.length}
+                dealerPhoto={seats.find((s) => s.dealer)?.photo}
+              />
             )}
 
             {betFlights.map((flight) => (
@@ -1958,8 +2269,11 @@ export default function GameRoom({
               activeTurnSeatId={activeTurnSeatId}
               turnTimerProgress={turnTimerProgress}
               myAutoFolded={myAutoFolded}
+              foldedSeatKeys={foldedSeatKeys}
               winnerSeatId={winnerSeatId}
               winnerAmount={winnerAmount}
+              actionLabels={actionLabels}
+              cardsRevealPulseId={cardsRevealPulseId}
             />
 
             {Object.entries(foldingSeats).map(([seatId, entry]) => (
@@ -1970,8 +2284,8 @@ export default function GameRoom({
               <SvaraBanner
                 phase={svaraPhase}
                 myDecision={svaraDecision}
-                canDecide={meInSvara && !spectator}
-                joinCost={blindAmount}
+                canDecide={!spectator && !!mySeatKey && !meInSvara}
+                joinCost={pot > 0 ? pot : blindAmount}
                 onJoin={handleSvaraJoin}
                 onDecline={handleSvaraDecline}
               />

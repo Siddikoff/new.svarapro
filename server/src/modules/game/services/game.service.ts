@@ -304,7 +304,14 @@ export class GameService {
     const gameState = await this.redisService.getGameState(roomId);
 
     if (room.status === 'finished' && gameState) {
-      const minBalance = room.minBet * 10;
+      // Drop players who can't even afford the next ante — at least one
+      // bet must be available or they'd never act. Previously this gate
+      // was `minBet * 10` (≈10 future rounds of cushion), which kicked
+      // winners mid-session the moment their balance fell below 10×
+      // ante and stranded the room in `waiting` because too few
+      // players survived. The new floor is the actual ante so a
+      // winning hand never knocks the winner out of their own table.
+      const minBalance = room.minBet;
       gameState.players = gameState.players.filter(
         (p) => p.balance >= minBalance,
       );
@@ -1252,7 +1259,13 @@ export class GameService {
           const playerIndex = gameState.players.findIndex(p => p.id === player.id);
           if (playerIndex !== -1) {
             gameState.players[playerIndex].balance += winAmount;
-            
+            // Mirror the single-winner path: stamp the per-player payout
+            // so the client can render the authoritative win badge from
+            // `lastWinAmount` instead of falling back to a local pot
+            // estimate. Without this the svara-split branch left
+            // `lastWinAmount` at 0 and the UI guessed.
+            gameState.players[playerIndex].lastWinAmount = winAmount;
+
             const action: GameAction = {
               type: 'win',
               telegramId: player.id,
@@ -1374,7 +1387,7 @@ export class GameService {
         gameState.isSvara = true;
         gameState.svaraParticipants = overallWinners.map((w) => w.id);
         gameState.winners = overallWinners;
-        gameState.svaraConfirmed = [];
+        gameState.svaraConfirmed = overallWinners.map((w) => w.id);
         gameState.svaraDeclined = [];
         gameState.svaraOriginalPot = gameState.pot; // Сохраняем изначальный банк свары
 
@@ -1461,7 +1474,12 @@ export class GameService {
       const winnerAfter = gameState.players.find(p => p.id === winnerId);
       const balanceAfter = winnerAfter ? winnerAfter.balance : 0;
       if (winnerAfter) {
-        winnerAfter.lastWinAmount = balanceAfter - balanceBefore;
+        // Round to 2 decimals — floating-point subtraction of two
+        // currency values can produce a long fractional tail
+        // (`1997.15 - 1990.5 = 6.6499999999999773`) which would
+        // otherwise leak into the client win-badge.
+        winnerAfter.lastWinAmount =
+          Math.round((balanceAfter - balanceBefore) * 100) / 100;
       }
     }
 

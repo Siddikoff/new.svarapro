@@ -55,9 +55,18 @@ export function Dropdown({
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const current = options.find((o) => o.value === value) || options[0];
-  // Separate `background` shorthand from triggerStyle so we can apply it
-  // BEFORE the chevron longhands — otherwise the shorthand resets them.
-  const { background: triggerBg, ...triggerRest } = triggerStyle || {};
+  // Strip the `background` shorthand from triggerStyle and reroute it to
+  // `backgroundColor`. Mixing the shorthand with `backgroundImage` /
+  // `backgroundRepeat` longhands here used to trigger an Android WebView
+  // bug where the chevron icon tiled across the trigger and visually
+  // struck through the label text (the `background` shorthand resets
+  // every longhand to its initial value — `background-repeat: repeat`
+  // included — and the WebView didn't always honour the longhand
+  // overrides written immediately after).
+  const { background: triggerBgShorthand, backgroundColor: triggerBgColor, ...triggerRest } =
+    triggerStyle || {};
+  const triggerBgRaw = triggerBgColor ?? triggerBgShorthand;
+  const triggerBg = typeof triggerBgRaw === 'string' ? triggerBgRaw : undefined;
 
   useEffect(() => {
     if (!open || ios) return undefined;
@@ -87,7 +96,7 @@ export function Dropdown({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         style={{
-          background: triggerBg,
+          backgroundColor: triggerBg,
           border: 'none',
           color: textColor,
           fontSize: 12,
@@ -102,6 +111,7 @@ export function Dropdown({
           backgroundImage: chevronUrl,
           backgroundRepeat: 'no-repeat',
           backgroundPosition: 'right 7px center',
+          backgroundSize: '10px 14px',
           ...triggerRest,
         }}
       >
@@ -123,7 +133,7 @@ export function Dropdown({
           setOpen((v) => !v);
         }}
         style={{
-          background: triggerBg,
+          backgroundColor: triggerBg,
           border: 'none',
           color: textColor,
           fontSize: 12,
@@ -138,6 +148,7 @@ export function Dropdown({
           backgroundImage: chevronUrl,
           backgroundRepeat: 'no-repeat',
           backgroundPosition: 'right 7px center',
+          backgroundSize: '10px 14px',
           whiteSpace: 'nowrap',
           textAlign: 'left',
           ...triggerRest,

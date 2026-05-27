@@ -188,6 +188,12 @@ export interface SvaraSitDownRequest {
   position: number;
   userData: {
     username: string;
-    avatar: string;
+    /**
+     * Telegram `photo_url`. Server-side `UserDataDto` reads this field
+     * and writes it to `Player.avatar`; keep the field name in sync
+     * here so we don't ship `avatar=undefined` to the server (which
+     * forces the UI into a stand-in image).
+     */
+    photo_url: string;
   };
 }

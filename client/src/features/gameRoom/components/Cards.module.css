@@ -52,6 +52,20 @@
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.42);
 }
 
+.centerDeckDealerPhoto {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 6px);
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-size: cover;
+  background-position: center;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
 .handCard {
   position: absolute;
   left: 50%;

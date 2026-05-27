@@ -36,7 +36,14 @@ import { CONNECTION_STATUS, useConnectionStore } from '../store/connectionStore'
 
 export interface SocketUserData {
   username: string;
-  avatar: string;
+  /**
+   * Telegram user `photo_url` — forwarded as-is to the server.
+   * The server stores this on `Player.avatar`; the field is named
+   * `photo_url` here so the handshake matches the server-side
+   * `UserDataDto` shape (otherwise the player ends up with
+   * `avatar=null` and the UI falls back to a stand-in image).
+   */
+  photo_url: string;
 }
 
 export interface ConnectSocketOptions {

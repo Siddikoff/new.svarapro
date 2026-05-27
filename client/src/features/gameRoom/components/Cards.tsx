@@ -1,4 +1,4 @@
-import { type CSSProperties,memo, useLayoutEffect, useRef } from 'react';
+import { type CSSProperties,memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import type { SeatAnchorPos } from '../constants';
 import {
@@ -12,6 +12,7 @@ import {
   HAND_FOLD_FLIGHT_MS,
   HAND_FOLD_REST_MS,
   HAND_FOLD_REST_SCALE,
+  HAND_FOLD_SIDE_TRAVEL_FRACTION,
   HAND_FOLD_TOTAL_MS,
   HAND_FOLD_TRAVEL_FRACTION,
 } from '../constants';
@@ -63,35 +64,106 @@ interface SeatCardProps {
 
 // One card-back that lifts off the top of the centre deck and flies to its
 // slot in the seat's fan.
+//
+// Once the deal animation has completed for this card, the CSS `animation:`
+// declaration is replaced with a static `transform:` matching the final
+// keyframe. Mobile browsers (notably Telegram's iOS / Android WebView)
+// restart still-active `animation`-driven elements when the visual viewport
+// changes — e.g. when the user rotates the device or the URL bar collapses
+// — which would otherwise replay the entire card-fly animation mid-round.
+// Swapping to a transform after settle removes the active animation so the
+// browser has nothing to restart.
 function SeatCardImpl({ pos, cardIndex, delayMs }: SeatCardProps) {
   const sideKey = pos.includes('right') ? 'left' : 'right';
   const safe = pos.replace('-', '_');
+  const [settled, setSettled] = useState(false);
+
+  useEffect(() => {
+    const id = window.setTimeout(
+      () => setSettled(true),
+      delayMs + DEAL_DURATION_MS,
+    );
+    return () => window.clearTimeout(id);
+  }, [delayMs]);
+
+  const off = CARD_OFFSETS[cardIndex];
+  const motionStyle: CSSProperties = settled
+    ? {
+        transform: `translate3d(${off.x}px, ${off.y}px, 0) rotate(${off.r}deg)`,
+        opacity: 1,
+      }
+    : {
+        animation: `svrDeal_${safe}_${cardIndex} ${DEAL_DURATION_MS}ms cubic-bezier(.22,.94,.36,1) ${delayMs}ms both`,
+      };
+
   return (
     <div
       className={styles.seatCard}
       style={{
         [sideKey]: -14,
         zIndex: 10 + cardIndex,
-        animation: `svrDeal_${safe}_${cardIndex} ${DEAL_DURATION_MS}ms cubic-bezier(.22,.94,.36,1) ${delayMs}ms both`,
+        ...motionStyle,
       }}
     />
   );
 }
 export const SeatCard = memo(SeatCardImpl);
 
+const FALLBACK_AVATAR_SVG_SMALL =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>` +
+      `<defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'>` +
+      `<stop offset='0%' stop-color='#3a4a5e'/>` +
+      `<stop offset='100%' stop-color='#1d2735'/></linearGradient></defs>` +
+      `<rect width='64' height='64' fill='url(#g)'/>` +
+      `<circle cx='32' cy='25' r='11' fill='rgba(255,255,255,0.55)'/>` +
+      `<path d='M14 56 C14 42 50 42 50 56 Z' fill='rgba(255,255,255,0.55)'/>` +
+      `</svg>`,
+  );
+
+function dealerPhotoUrl(photo: string | number | undefined): string {
+  if (typeof photo === 'string' && photo.length > 0 && /^(https?:)?\/\//i.test(photo))
+    return photo;
+  if (typeof photo === 'number') return `https://i.pravatar.cc/120?img=${photo}`;
+  return FALLBACK_AVATAR_SVG_SMALL;
+}
+
 interface CenterDeckProps {
   totalDeals: number;
+  dealerPhoto?: string | number;
 }
 
 // Stack of card-backs at the felt center; fades out once all seats are dealt.
-function CenterDeckImpl({ totalDeals }: CenterDeckProps) {
+//
+// Same rationale as `SeatCard` — once the fade has played we swap the
+// `animation:` declaration for a static `opacity: 0`. Without this, mobile
+// browsers can replay the fade on viewport changes (orientation change /
+// URL-bar collapse), making the centre deck momentarily reappear mid-round.
+function CenterDeckImpl({ totalDeals, dealerPhoto }: CenterDeckProps) {
   const dealTotalMs = (totalDeals - 1) * DEAL_STAGGER_MS + DEAL_DURATION_MS;
+  const fadeDelayMs = Math.max(0, dealTotalMs - 80);
+  const fadeDurationMs = 320;
+  const [faded, setFaded] = useState(false);
+
+  useEffect(() => {
+    const id = window.setTimeout(
+      () => setFaded(true),
+      fadeDelayMs + fadeDurationMs,
+    );
+    return () => window.clearTimeout(id);
+  }, [fadeDelayMs]);
+
   return (
     <div
       className={styles.centerDeck}
-      style={{
-        animation: `svrDeckFade 320ms cubic-bezier(.22,.94,.36,1) ${dealTotalMs - 80}ms forwards`,
-      }}
+      style={
+        faded
+          ? { opacity: 0 }
+          : {
+              animation: `svrDeckFade ${fadeDurationMs}ms cubic-bezier(.22,.94,.36,1) ${fadeDelayMs}ms forwards`,
+            }
+      }
     >
       {[0, 1, 2].map((i) => (
         <div
@@ -102,6 +174,12 @@ function CenterDeckImpl({ totalDeals }: CenterDeckProps) {
           }}
         />
       ))}
+      {dealerPhoto != null && (
+        <div
+          className={styles.centerDeckDealerPhoto}
+          style={{ backgroundImage: `url("${dealerPhotoUrl(dealerPhoto)}")` }}
+        />
+      )}
     </div>
   );
 }
@@ -301,11 +379,22 @@ const FOLD_PILE = [
   { x: 16, y: 0 },
 ];
 
-function FoldCardFan() {
+interface FoldCardFanProps {
+  sideSeat?: boolean;
+}
+
+function FoldCardFan({ sideSeat = false }: FoldCardFanProps) {
   const wrapperWidth = HAND_CARD_W + FOLD_PILE[2].x * 2;
   const wrapperHeight = HAND_CARD_H;
   return (
-    <div className={styles.foldFan} style={{ width: wrapperWidth, height: wrapperHeight }}>
+    <div
+      className={styles.foldFan}
+      style={{
+        width: wrapperWidth,
+        height: wrapperHeight,
+        transform: sideSeat ? 'rotate(90deg)' : undefined,
+      }}
+    >
       {FOLD_PILE.map((slot, i) => (
         <div
           key={i}
@@ -338,14 +427,26 @@ interface FoldingSeatOverlayProps {
 function FoldingSeatOverlayImpl({ displayPos }: FoldingSeatOverlayProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const anchor = ANCHORS[displayPos];
-  const startAnchor = FOLD_START_ANCHORS[displayPos] ?? anchor;
+  const startAnchor = FOLD_START_ANCHORS[displayPos];
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el || !anchor || !startAnchor) return undefined;
     const flightEnd = HAND_FOLD_FLIGHT_MS / HAND_FOLD_TOTAL_MS;
     const restEnd = (HAND_FOLD_FLIGHT_MS + HAND_FOLD_REST_MS) / HAND_FOLD_TOTAL_MS;
-    const destTop = lerpPct(startAnchor.top, '50%', HAND_FOLD_TRAVEL_FRACTION);
-    const destLeft = lerpPct(startAnchor.left, '50%', HAND_FOLD_TRAVEL_FRACTION);
+    // Top/bottom seats throw the fold pile vertically toward the centre;
+    // side seats throw it horizontally. Pinning the inactive axis to the
+    // start coordinate keeps the trajectory straight (no diagonal drift)
+    // so the throw direction reads as "toward the table from where I sit"
+    // rather than "toward the bank chip". The active-axis fraction is
+    // larger for side seats to compensate for the felt being taller than
+    // wide on portrait phones — same pixel distance, regardless of seat.
+    const isVerticalSeat = displayPos === 'top' || displayPos === 'bottom';
+    const destTop = isVerticalSeat
+      ? lerpPct(startAnchor.top, '50%', HAND_FOLD_TRAVEL_FRACTION)
+      : startAnchor.top;
+    const destLeft = isVerticalSeat
+      ? startAnchor.left
+      : lerpPct(startAnchor.left, '50%', HAND_FOLD_SIDE_TRAVEL_FRACTION);
     const restTransform = `translate(${startAnchor.tx}, ${startAnchor.ty}) scale(${HAND_FOLD_REST_SCALE})`;
     const anim = el.animate(
       [
@@ -389,7 +490,8 @@ function FoldingSeatOverlayImpl({ displayPos }: FoldingSeatOverlayProps) {
     return () => {
       if (anim && typeof anim.cancel === 'function') anim.cancel();
     };
-  }, [anchor, startAnchor]);
+  }, [anchor, startAnchor, displayPos]);
+  const isSideSeat = displayPos !== 'top' && displayPos !== 'bottom';
   if (!anchor || !startAnchor) return null;
   return (
     <div
@@ -401,7 +503,7 @@ function FoldingSeatOverlayImpl({ displayPos }: FoldingSeatOverlayProps) {
         transform: `translate(${startAnchor.tx}, ${startAnchor.ty}) scale(${HAND_FOLD_REST_SCALE})`,
       }}
     >
-      <FoldCardFan />
+      <FoldCardFan sideSeat={isSideSeat} />
     </div>
   );
 }

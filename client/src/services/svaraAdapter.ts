@@ -107,6 +107,13 @@ export const adaptPlayerToSeat = (
   if (reveal && typeof player.score === 'number' && player.score > 0) {
     seat.score = player.score;
   }
+  // Forward the server-authoritative round payout so the winner badge
+  // can show the real number (pot − rake, or per-share for splits).
+  // Only set when present and > 0 so the field never paints a stale
+  // "+$0" badge during the next round before the server resets it.
+  if (typeof player.lastWinAmount === 'number' && player.lastWinAmount > 0) {
+    seat.lastWinAmount = player.lastWinAmount;
+  }
   // Folded players keep their cards face-down even at showdown — by Svara
   // rules a hand is only revealed if its owner stayed in the round and made
   // it to the actual comparison. Skipping the `hand` here keeps `seat.hand`

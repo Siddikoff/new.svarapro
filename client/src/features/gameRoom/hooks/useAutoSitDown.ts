@@ -10,7 +10,7 @@ import { SEATS_DEFAULT } from '../constants';
 
 const MAX_POSITION = SEATS_DEFAULT.length;
 
-const buildUserData = (): { username: string; avatar: string } => {
+const buildUserData = (): { username: string; photo_url: string } => {
   const user = useAuthStore.getState().user;
   const tgUser = getTelegramUser();
   return {
@@ -19,7 +19,10 @@ const buildUserData = (): { username: string; avatar: string } => {
       tgUser?.username ||
       tgUser?.first_name ||
       'Player',
-    avatar: user.photo || tgUser?.photo_url || '',
+    // The server's `UserDataDto` reads `photo_url` and writes it to
+    // `Player.avatar`; sending the field as `avatar` would land as
+    // `undefined` on the server and the UI would render a stand-in.
+    photo_url: user.photo || tgUser?.photo_url || '',
   };
 };
 

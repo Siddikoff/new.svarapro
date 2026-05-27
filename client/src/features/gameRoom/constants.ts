@@ -145,17 +145,23 @@ export interface AnchorPosition {
   ty: string;
 }
 
+// Side-seat avatars were originally pinned with `tx: -20% / -80%`, which
+// pushed ~20% of the avatar past the table edge. On narrow phone widths
+// the action-label pill above the avatar then clipped under the viewport
+// edge. We nudge the four side-up / side-down seats and both side-centre
+// anchors inward by 10% of avatar width so the action label has enough
+// horizontal room without crowding the felt.
 export const ANCHORS: Record<SeatAnchorPos, AnchorPosition> = {
   top:           { top: '0%',   left: '50%',  tx: '-50%', ty: '-22%' },
-  'left-up':     { top: '33%',  left: '0%',   tx: '-20%', ty: '-27%' },
-  'right-up':    { top: '33%',  left: '100%', tx: '-80%', ty: '-27%' },
+  'left-up':     { top: '33%',  left: '0%',   tx: '-10%', ty: '-27%' },
+  'right-up':    { top: '33%',  left: '100%', tx: '-90%', ty: '-27%' },
   // Side-centre anchors are used by the 3- and 4-seat layouts so the
   // remaining seats sit symmetrically across the felt instead of at the
   // up/down corners.
-  'left-center':  { top: '50%',  left: '0%',   tx: '-20%', ty: '-50%' },
-  'right-center': { top: '50%',  left: '100%', tx: '-80%', ty: '-50%' },
-  'left-down':   { top: '67%',  left: '0%',   tx: '-20%', ty: '-27%' },
-  'right-down':  { top: '67%',  left: '100%', tx: '-80%', ty: '-27%' },
+  'left-center':  { top: '50%',  left: '0%',   tx: '-10%', ty: '-50%' },
+  'right-center': { top: '50%',  left: '100%', tx: '-90%', ty: '-50%' },
+  'left-down':   { top: '67%',  left: '0%',   tx: '-10%', ty: '-27%' },
+  'right-down':  { top: '67%',  left: '100%', tx: '-90%', ty: '-27%' },
   bottom:        { top: '100%', left: '50%',  tx: '-50%', ty: '-50%' },
 };
 
@@ -377,20 +383,49 @@ export const HAND_FOLD_TOTAL_MS =
 // so the discard lands close to the folding player (right next to their
 // seat) rather than out in the middle of the table.
 export const HAND_FOLD_TRAVEL_FRACTION = 0.18;
+// Side seats (left-*, right-*) only travel along the horizontal axis
+// when their hand folds — they "throw" the cards toward the felt
+// centre across the table, mirroring how the bottom me-seat throws
+// upward and the top seat throws downward. On portrait phones the
+// felt is much taller than wide, so the same vertical 18% travel for
+// the bottom seat would look like a barely-visible ~20px jitter when
+// applied as a horizontal 18% travel for a side seat. We use a larger
+// fraction (~12% of the felt width) so the pixel distance matches the
+// vertical travel and the throw reads as a deliberate fold from any
+// seat. The fraction multiplies the start→centre delta on the active
+// axis only; the inactive axis stays pinned to the start coordinate
+// to keep the throw straight (no diagonal drift toward the centre).
+export const HAND_FOLD_SIDE_TRAVEL_FRACTION = 0.375;
 // Constant scale of the folding card pile. The me-seat's open hand is
 // 60×84 px; scaling to 0.48 lands at ~29×40 px — a compact face-down
 // discard pile that reads as "the player tossed their cards" without
 // crowding the felt next to the seat.
 export const HAND_FOLD_REST_SCALE = 0.48;
 // Per-seat starting position for the fold overlay. Unlike `ANCHORS`,
-// which pins each seat's centre, these anchor the *open hand's actual
-// visual position* — i.e. above the avatar for the bottom seat — so the
-// fold appears to start from where the cards were, not from behind the
-// player's photo. Missing entries fall back to the seat anchor; for now
-// only the bottom (me-) seat is populated because that's the only seat
-// that can fold without backend wiring.
-export const FOLD_START_ANCHORS: Partial<Record<SeatAnchorPos, AnchorPosition>> = {
-  bottom: { top: '82%', left: '50%', tx: '-50%', ty: '-50%' },
+// which pins each seat's avatar centre, these anchor the *open hand's
+// actual visual position* — i.e. between the avatar and the felt
+// centre on a single axis — so the fold pile appears in the empty
+// space next to the player and travels straight toward the felt centre
+// rather than diagonally:
+//   • bottom/top  : pile sits above/below the avatar on the same
+//                   `left: 50%` column, so the fold travels purely
+//                   vertically toward the felt centre.
+//   • left-*/right-*: pile sits beside the avatar at the same vertical
+//                   `top` as the avatar, so the fold travels purely
+//                   horizontally toward the felt centre — matching
+//                   where the player's open-hand fan is rendered (see
+//                   `seatHandPositionStyle` in Cards.tsx).
+// All entries use centred tx/ty so the pile sits exactly on the chosen
+// coords regardless of the seat anchor's avatar-specific offsets.
+export const FOLD_START_ANCHORS: Record<SeatAnchorPos, AnchorPosition> = {
+  top:            { top: '18%', left: '50%', tx: '-50%', ty: '-50%' },
+  'left-up':      { top: '33%', left: '18%', tx: '-50%', ty: '-50%' },
+  'right-up':     { top: '33%', left: '82%', tx: '-50%', ty: '-50%' },
+  'left-center':  { top: '50%', left: '18%', tx: '-50%', ty: '-50%' },
+  'right-center': { top: '50%', left: '82%', tx: '-50%', ty: '-50%' },
+  'left-down':    { top: '67%', left: '18%', tx: '-50%', ty: '-50%' },
+  'right-down':   { top: '67%', left: '82%', tx: '-50%', ty: '-50%' },
+  bottom:         { top: '82%', left: '50%', tx: '-50%', ty: '-50%' },
 };
 
 // Placeholder "round end" delay used by the mid-deal join flow: spectator

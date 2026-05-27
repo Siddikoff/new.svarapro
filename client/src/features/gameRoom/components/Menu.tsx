@@ -89,11 +89,6 @@ interface GameMenuProps {
   onToggleSound: () => void;
   vibration: boolean;
   onToggleVibration: () => void;
-  onShowdown?: () => void;
-  // Demo trigger that forces a Свара tie at showdown (two seats with the
-  // same top score). Only wired in the local-only demo build; will go away
-  // when a real round-end event lands.
-  onSvaraDemo?: () => void;
   onExit: () => void;
   t: RoomThemeStyle;
 }
@@ -202,8 +197,6 @@ function GameMenuImpl({
   onToggleSound,
   vibration,
   onToggleVibration,
-  onShowdown,
-  onSvaraDemo,
   onExit,
   t,
 }: GameMenuProps) {
@@ -345,43 +338,6 @@ function GameMenuImpl({
       <line x1="21" y1="12" x2="9" y2="12" />
     </svg>
   );
-  // Demo trigger for the showdown animation. Until a backend round-end
-  // event lands, this menu row is the only way to test the per-seat flip
-  // + score-badge reveal, so we wrap it in a single SVG of three fanned
-  // cards (no "demo" sticker — the surrounding label already says so).
-  const showdownIcon = (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="4" y="6" width="10" height="14" rx="2" transform="rotate(-12 9 13)" />
-      <rect x="7" y="5" width="10" height="14" rx="2" />
-      <rect x="10" y="6" width="10" height="14" rx="2" transform="rotate(12 15 13)" />
-    </svg>
-  );
-  // Demo trigger for the Свара tie animation. Two equal stars + a small
-  // sparkle so the icon reads as "two players, equal hands" at a glance.
-  const svaraIcon = (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polygon points="7 3 8.3 6.5 12 7 9 9.4 9.8 13 7 11.2 4.2 13 5 9.4 2 7 5.7 6.5" />
-      <polygon points="17 11 18.3 14.5 22 15 19 17.4 19.8 21 17 19.2 14.2 21 15 17.4 12 15 15.7 14.5" />
-    </svg>
-  );
 
   return (
     <div onClick={onClose} className={styles.menuOverlay}>
@@ -433,8 +389,6 @@ function GameMenuImpl({
         )}
         {row(soundIcon, 'Звук', <Toggle on={sound} onClick={onToggleSound} isLight={isLight} />)}
         {row(vibrIcon, 'Вибрация', <Toggle on={vibration} onClick={onToggleVibration} isLight={isLight} />)}
-        {onShowdown ? row(showdownIcon, 'Вскрыть всех (демо)', null, onShowdown) : null}
-        {onSvaraDemo ? row(svaraIcon, 'Свара (демо)', null, onSvaraDemo) : null}
         {row(exitIcon, 'Выйти из игры', null, onExit, true)}
       </div>
     </div>

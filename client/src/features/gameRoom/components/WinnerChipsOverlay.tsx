@@ -4,7 +4,7 @@ import { useLayoutEffect } from 'react';
 // `ANTE_CHIP_DURATION_MS` (the bet-flight duration) so the overall
 // sweep reads as a noticeably slower, more deliberate payout rather
 // than a quick burst.
-const WINNER_CHIP_DURATION_MS = 1800;
+const WINNER_CHIP_DURATION_MS = 1400;
 
 export interface WinnerChipsOverlayProps {
   seatId: string;

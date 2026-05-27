@@ -480,6 +480,95 @@
   filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.2));
 }
 
+/* Transient "action label" — a compact green pill that pops at the
+ * bottom edge of the avatar for ~2.5s after each game action («Тёмная $10»,
+ * «Смотрит», «Уравнял $20», «Повысил $40», «Пас», «В свару»). Mirrors
+ * the colour treatment of the call/raise action button so the badge
+ * reads as "this player just confirmed a move" without competing with
+ * the winner pill (which sits in the same slot — we hide the action
+ * label while the winner pill is on screen). */
+.actionBubble {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* Sits above the dealt face-down cards (`SeatCard`/`MyHand` at
+   * z-index 6–7) and above the winner-amount pill (z-index 11) so the
+   * label never tucks under a rubashka peeking past the avatar. */
+  z-index: 14;
+  pointer-events: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  line-height: 1;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  animation: svrActionLabelPop 2500ms cubic-bezier(0.34, 1.32, 0.64, 1) both;
+}
+
+.actionBubbleText {
+  display: inline-block;
+  color: #ffffff;
+}
+
+/* Three tone variants matching the action buttons in `Actions.tsx`.
+ * Same vertical gradient + inset top highlight + glow rim used on the
+ * bottom action bar so the on-seat badge reads as the same control
+ * the player just pressed. */
+.actionBubbleRed {
+  background: linear-gradient(180deg, #ec5959 0%, #c52d2d 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.20),
+    0 2px 8px rgba(226, 59, 59, 0.40),
+    0 0 0 2px rgba(0, 0, 0, 0.35);
+}
+
+.actionBubbleGreen {
+  background: linear-gradient(180deg, #6cd87a 0%, #3eb24f 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.20),
+    0 2px 8px rgba(77, 205, 94, 0.40),
+    0 0 0 2px rgba(0, 0, 0, 0.35);
+}
+
+.actionBubbleBlue {
+  background: linear-gradient(180deg, #3293db 0%, #1c6cae 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.20),
+    0 2px 8px rgba(36, 129, 204, 0.40),
+    0 0 0 2px rgba(0, 0, 0, 0.35);
+}
+
+@keyframes svrActionLabelPop {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px) scale(0.7);
+  }
+  10% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-2px) scale(1.06);
+  }
+  18% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-6px) scale(0.95);
+  }
+}
+
 .seatWrap {
   position: absolute;
   display: flex;
@@ -698,3 +787,49 @@
 }
 
 
+
+/* Brief shake on the dealt face-down card pile, triggered when the
+   server transitions from `blind_betting` to `betting` (first call /
+   raise after the look round). Conveys "everyone's cards are now
+   considered open" without flipping any cards face-up — the rubashka
+   stack just wobbles in place for ~1s. The wrapper itself is
+   position-static and contributes no offset, so the contained
+   SeatCards keep their absolute placement; we animate only `transform`
+   on the wrapper to compose with the child transforms. */
+.cardsReveal {
+  animation: svrCardsReveal 950ms cubic-bezier(.36, .07, .19, .97);
+  transform-origin: center;
+}
+
+@keyframes svrCardsReveal {
+  0%, 100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  10% {
+    transform: translateX(-2px) rotate(-1.5deg);
+  }
+  20% {
+    transform: translateX(3px) rotate(1.8deg);
+  }
+  30% {
+    transform: translateX(-3px) rotate(-2deg);
+  }
+  40% {
+    transform: translateX(3px) rotate(1.8deg);
+  }
+  50% {
+    transform: translateX(-2px) rotate(-1.4deg);
+  }
+  60% {
+    transform: translateX(2px) rotate(1.2deg);
+  }
+  70% {
+    transform: translateX(-1.5px) rotate(-0.8deg);
+  }
+  80% {
+    transform: translateX(1px) rotate(0.5deg);
+  }
+  90% {
+    transform: translateX(-0.5px) rotate(-0.2deg);
+  }
+}

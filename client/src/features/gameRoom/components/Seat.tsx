@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useRef } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { hapticTap } from '../../../services/haptics';
 import {
@@ -38,20 +38,63 @@ export interface SeatReaction {
   emojiId?: string;
 }
 
+/**
+ * Transient game-action bubble shown above a seat's avatar for
+ * ~2.5s after each player action. `id` is a monotonic counter so
+ * remounting the bubble re-triggers the CSS pop-in animation even
+ * when the same player repeats the same action text. `tone` picks
+ * one of the three action-button colour treatments so the badge
+ * reads the same as the matching button in the bottom action bar:
+ *   - red   — «Пас»
+ *   - green — «Уравнял» / «Повысил» / «В свару»
+ *   - blue  — «Тёмная» / «Смотрит»
+ */
+export type SeatActionTone = 'red' | 'green' | 'blue';
+export interface SeatActionLabel {
+  id: number;
+  text: string;
+  tone: SeatActionTone;
+}
+
 interface AvatarProps {
-  photo: string | number;
+  photo?: string | number | null;
+  name?: string;
   size?: number;
   winner?: boolean;
 }
 
-function Avatar({ photo, size = AVATAR, winner = false }: AvatarProps) {
-  // Photo is either a numeric pravatar.cc seed (legacy v143 stand-ins) or a
-  // direct URL string (real Telegram/CDN avatars). Treat anything that
-  // looks like a protocol URL as the literal image URL.
+// Neutral silhouette used when the player has no Telegram photo (e.g. the
+// user disabled photo sharing or the account has no avatar set). Rendered as
+// an inline SVG data URI so the fallback never depends on a remote image
+// service (the previous `i.pravatar.cc` fallback was a UI mock that leaked
+// into production — a real player would see a stranger's face above their
+// seat).
+const FALLBACK_AVATAR_SVG =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>` +
+      `<defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'>` +
+      `<stop offset='0%' stop-color='#3a4a5e'/>` +
+      `<stop offset='100%' stop-color='#1d2735'/></linearGradient></defs>` +
+      `<rect width='64' height='64' fill='url(#g)'/>` +
+      `<circle cx='32' cy='25' r='11' fill='rgba(255,255,255,0.55)'/>` +
+      `<path d='M14 56 C14 42 50 42 50 56 Z' fill='rgba(255,255,255,0.55)'/>` +
+      `</svg>`,
+  );
+
+function Avatar({ photo, name, size = AVATAR, winner = false }: AvatarProps) {
+  // Real Telegram avatars come through as `https://...` strings. Numeric
+  // stand-ins (legacy mock seeds) still resolve through pravatar so demo
+  // tables keep their look, but anything empty/missing falls back to the
+  // local silhouette rather than hitting an external mock service.
   const url =
-    typeof photo === 'string' && /^(https?:)?\/\//i.test(photo)
+    typeof photo === 'string' && photo.length > 0 && /^(https?:)?\/\//i.test(photo)
       ? photo
-      : `https://i.pravatar.cc/120?img=${photo}`;
+      : typeof photo === 'number'
+        ? `https://i.pravatar.cc/120?img=${photo}`
+        : FALLBACK_AVATAR_SVG;
+  const showInitial = url === FALLBACK_AVATAR_SVG && !!name?.trim();
+  const initial = showInitial ? (name as string).trim().charAt(0).toUpperCase() : '';
   return (
     <div
       className={`${styles.avatarWrap}${winner ? ' ' + styles.avatarWrapWinner : ''}`}
@@ -60,8 +103,30 @@ function Avatar({ photo, size = AVATAR, winner = false }: AvatarProps) {
       {winner && <div aria-hidden className={styles.avatarHalo} />}
       <div
         className={`${styles.avatar}${winner ? ' ' + styles.avatarWinner : ''}`}
-        style={{ width: size, height: size, backgroundImage: `url(${url})` }}
-      />
+        style={{ width: size, height: size, backgroundImage: `url("${url}")` }}
+      >
+        {showInitial && (
+          <span
+            aria-hidden
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '100%',
+              height: '100%',
+              color: 'rgba(255,255,255,0.92)',
+              fontWeight: 700,
+              fontSize: Math.round(size * 0.42),
+              lineHeight: 1,
+              fontFamily:
+                "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif",
+              textShadow: '0 1px 2px rgba(0,0,0,0.45)',
+            }}
+          >
+            {initial}
+          </span>
+        )}
+      </div>
       {winner && (
         <div aria-hidden className={styles.avatarSparkles}>
           <span className={`${styles.sparkle} ${styles.s1}`} />
@@ -257,6 +322,30 @@ function DealerChip({ side }: DealerChipProps) {
   return <div className={`${styles.dealerChip} ${side === 'left' ? styles.left : styles.right}`}>D</div>;
 }
 
+interface ActionBubbleProps {
+  label?: SeatActionLabel | null;
+}
+
+const ACTION_TONE_CLASS: Record<SeatActionTone, string> = {
+  red: styles.actionBubbleRed,
+  green: styles.actionBubbleGreen,
+  blue: styles.actionBubbleBlue,
+};
+
+function ActionBubble({ label }: ActionBubbleProps) {
+  if (!label) return null;
+  const toneClass = ACTION_TONE_CLASS[label.tone] ?? styles.actionBubbleGreen;
+  return (
+    <div
+      key={label.id}
+      className={`${styles.actionBubble} ${toneClass}`}
+      aria-live="polite"
+    >
+      <span className={styles.actionBubbleText}>{label.text}</span>
+    </div>
+  );
+}
+
 interface ReactionBubbleProps {
   reaction?: SeatReaction | null;
 }
@@ -311,6 +400,21 @@ export interface SeatProps {
   winner?: boolean;
   /** Formatted win amount (e.g. "+$60"). Shown after chips land. */
   winnerAmount?: string | null;
+  /**
+   * Transient action label («Тёмная $10» / «Смотрит» / …) shown above the
+   * avatar for ~2.5s. The `id` field is a monotonic counter so the
+   * bubble re-mounts and replays the pop-in animation when the same
+   * player triggers the same action again.
+   */
+  actionLabel?: SeatActionLabel | null;
+  /**
+   * Monotonic counter that ticks every time the round leaves the
+   * `blind_betting` phase. When it changes, this seat replays a short
+   * shake animation on its face-down dealt cards (the rubashka pile)
+   * to flag that everyone's cards are now considered «открыты» — no
+   * more blind betting until the next round.
+   */
+  cardsRevealPulseId?: number;
 }
 
 function SeatImpl({
@@ -331,12 +435,33 @@ function SeatImpl({
   hideCards,
   winner,
   winnerAmount,
+  actionLabel,
+  cardsRevealPulseId,
 }: SeatProps) {
   const a = ANCHORS[displayPos];
   // Dealer chip sits next to the name plate, on the side facing the
   // centre of the table (so it doesn't get cut off by the screen edge).
   const dealerSide = displayPos.includes('right') ? 'left' : 'right';
   const seatIdx = activeDealOrder.indexOf(displayPos);
+
+  // Replay a short shake on the dealt-card stack whenever the parent
+  // ticks `cardsRevealPulseId`. The CSS animation length is in
+  // `Seat.module.css` (`@keyframes svrCardReveal`); we keep the class
+  // mounted for slightly longer than the animation so React doesn't
+  // race the keyframe to completion.
+  const [cardShake, setCardShake] = useState(false);
+  const cardShakeIdRef = useRef<number | undefined>(cardsRevealPulseId);
+  useEffect(() => {
+    if (cardsRevealPulseId === undefined) return;
+    if (cardShakeIdRef.current === cardsRevealPulseId) return;
+    cardShakeIdRef.current = cardsRevealPulseId;
+    // Skip the initial mount tick — we only want to react to actual
+    // server-side transitions, not the first render after a refresh.
+    if (cardsRevealPulseId === 0) return;
+    setCardShake(true);
+    const t = window.setTimeout(() => setCardShake(false), 1100);
+    return () => window.clearTimeout(t);
+  }, [cardsRevealPulseId]);
 
   // Animate the seat around the table perimeter (instead of letting CSS
   // interpolate top/left in a straight line that cuts across the felt).  We
@@ -421,18 +546,18 @@ function SeatImpl({
           style={{ opacity: dim ? 0.55 : 1, filter: dim ? 'saturate(0.7)' : undefined }}
         >
           <div className={styles.relative}>
-            {dealing &&
-              seatIdx >= 0 &&
-              !hand &&
-              !hideCards &&
-              CARD_OFFSETS.map((_, cardIdx) => (
-                <SeatCard
-                  key={cardIdx}
-                  pos={displayPos}
-                  cardIndex={cardIdx}
-                  delayMs={(cardIdx * activeDealOrder.length + seatIdx) * DEAL_STAGGER_MS}
-                />
-              ))}
+            {dealing && seatIdx >= 0 && !hand && !hideCards && (
+              <div className={cardShake ? styles.cardsReveal : undefined}>
+                {CARD_OFFSETS.map((_, cardIdx) => (
+                  <SeatCard
+                    key={cardIdx}
+                    pos={displayPos}
+                    cardIndex={cardIdx}
+                    delayMs={(cardIdx * activeDealOrder.length + seatIdx) * DEAL_STAGGER_MS}
+                  />
+                ))}
+              </div>
+            )}
             {hand ? (
               <MyHand
                 cards={hand}
@@ -459,7 +584,13 @@ function SeatImpl({
               }`}
             >
               {winner && <div className={styles.winnerCrown}>👑</div>}
-              <Avatar photo={seat.photo ?? 0} winner={!!winner} />
+              <Avatar photo={seat.photo} name={seat.name} winner={!!winner} />
+              {/* Action label sits at the bottom edge of the avatar (between
+                  the photo and the name plate). Rendered inside the same
+                  stack as the winner-amount badge so both share the same
+                  anchor — we just hide the action pill when the winner pill
+                  is on screen to avoid a visual collision. */}
+              {!winnerAmount && <ActionBubble label={actionLabel} />}
               {winnerAmount && (
                 <div className={styles.winnerAmount}>{winnerAmount}</div>
               )}

@@ -232,14 +232,14 @@ describe('gameSocket bridge', () => {
     sitDown({
       roomId: '1',
       position: 2,
-      userData: { username: 'me', avatar: '' },
+      userData: { username: 'me', photo_url: '' },
     });
     subscribeToBalanceUpdates();
     expect(emits).toEqual([
       { event: 'chat_message', payload: { roomId: '1', phrase: 'hi' } },
       {
         event: 'sit_down',
-        payload: { roomId: '1', position: 2, userData: { username: 'me', avatar: '' } },
+        payload: { roomId: '1', position: 2, userData: { username: 'me', photo_url: '' } },
       },
       // `subscribe_balance` is the GameGateway's per-socket subscription; `join`
       // is the TransactionGateway's per-user room join — both are required so

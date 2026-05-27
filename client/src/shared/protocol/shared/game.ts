@@ -71,6 +71,16 @@ export const SeatStateSchema = z.object({
    * computation".
    */
   score: z.number().optional(),
+  /**
+   * Amount the player won in the most recent round, as computed by
+   * the server's `distributeWinnings` (pot − rake, or per-share for
+   * split pots / Svara). Forwarded so the winner badge shows the
+   * real payout instead of the locally accumulated chip pile, which
+   * could disagree with the server in edge cases (e.g. rake, side
+   * pots after a fold). Reset to 0 by the server at the start of the
+   * next round; absent on snapshots that predate the showdown.
+   */
+  lastWinAmount: MoneySchema.optional(),
 });
 export type SeatState = z.infer<typeof SeatStateSchema>;
 
