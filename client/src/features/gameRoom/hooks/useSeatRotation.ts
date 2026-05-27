@@ -28,6 +28,13 @@ export interface RotationSeat {
   me?: boolean;
   empty?: boolean;
   timer?: number;
+  /**
+   * Server-authoritative Свара score (7..34). Set after the backend
+   * computes it (look / showdown / svara resolution). The UI uses this
+   * value directly so the joker (7♣) substitution rule never disagrees
+   * with the backend.
+   */
+  score?: number;
   activeBet?: unknown;
   [key: string]: unknown;
 }
@@ -44,6 +51,8 @@ export interface SeatOverlayData {
   stack?: string | number;
   photo?: string | number;
   empty?: boolean;
+  /** Server-authoritative Свара score forwarded from `realSeats`. */
+  score?: number;
 }
 
 export interface UseSeatRotationOptions {
@@ -257,6 +266,7 @@ export function useSeatRotation({
           ...(mySeat.name != null ? { name: mySeat.name } : {}),
           ...(mySeat.stack != null ? { stack: mySeat.stack } : {}),
           ...(mySeat.photo != null ? { photo: mySeat.photo } : {}),
+          ...(mySeat.score != null ? { score: mySeat.score } : {}),
         };
       }
       if (emptyPositionsBase.has(s.pos) && s.pos !== chosenPos) {
@@ -280,6 +290,7 @@ export function useSeatRotation({
         ...(overlay.name != null ? { name: overlay.name } : {}),
         ...(overlay.stack != null ? { stack: overlay.stack } : {}),
         ...(overlay.photo != null ? { photo: overlay.photo } : {}),
+        ...(overlay.score != null ? { score: overlay.score } : {}),
       };
     });
   }, [spectator, chosenPos, joinedMidDeal, baseSeats, emptyPositionsBase, mySeat, otherSeats]);

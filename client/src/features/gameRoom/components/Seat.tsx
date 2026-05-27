@@ -14,7 +14,7 @@ import {
   type SeatAnchorPos,
   shortArc,
 } from '../constants';
-import { type Card, svaraHandScore } from '../deck';
+import type { Card } from '../deck';
 import { MyHand, SeatCard } from './Cards';
 import { LottieEmoji } from './Chat';
 import styles from './Seat.module.css';
@@ -29,6 +29,12 @@ export interface SeatData {
   // Stable seat id (string or number). Threaded to NamePlate so the ante
   // overlay can locate this seat's nameplate via `data-ante-anchor`.
   id?: string | number | null;
+  // Server-authoritative Свара score (7..34) populated after `look` /
+  // showdown / svara resolution. The UI prefers this value over any
+  // locally-computed score so the joker (7♣) substitution rule on the
+  // backend doesn't disagree with the client and so all players see
+  // the same number for a svara tie.
+  score?: number | null;
 }
 
 export interface SeatReaction {
@@ -440,8 +446,11 @@ function SeatImpl({
                 // Opponents get a red circular «очко» badge on top of their
                 // fan once the showdown reveals the cards. The me-seat keeps
                 // its existing green chip on the name plate, so we don't pass
-                // a score here for `seat.me`.
-                score={!seat.me && hand.length > 0 ? svaraHandScore(hand) : null}
+                // a score here for `seat.me`. Score is the authoritative
+                // value from the server snapshot — the client never
+                // recomputes it, so all players see the same number for
+                // svara ties (incl. the joker 7♣ substitution rule).
+                score={!seat.me && hand.length > 0 ? seat.score ?? null : null}
                 svara={svara}
                 winner={!!winner}
               />
@@ -471,9 +480,11 @@ function SeatImpl({
               stack={seat.stack}
               // Green «очко» chip lives on the me-seat only — opponents'
               // scores read off the card faces themselves so the felt
-              // stays uncluttered when every seat reveals.
+              // stays uncluttered when every seat reveals. Score is the
+              // server-authoritative value (`seat.score`) — never recomputed
+              // on the client.
               score={
-                seat.me && hand && hand.length > 0 ? svaraHandScore(hand) : null
+                seat.me && hand && hand.length > 0 ? seat.score ?? null : null
               }
               svara={svara}
               timerProgress={timerProgress}

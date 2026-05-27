@@ -285,8 +285,37 @@ export default function GameRoom({
   // player's overlay is applied separately via `mySeatOverlay` (always
   // `bottom`), so we explicitly skip our own seat to avoid rendering
   // ourselves in two places at once.
+  // Lookup of the local player's server-side seat (if any). Used both for
+  // attaching the server-authoritative Свара score to `mySeatOverlay`
+  // and elsewhere when we need the live snapshot for the bottom seat.
+  const myServerSeatForOverlay = useMemo(() => {
+    if (!selfTelegramId || !realSeats) return undefined;
+    return Object.values(realSeats).find(
+      (s) => s.telegramId && String(s.telegramId) === selfTelegramId,
+    );
+  }, [realSeats, selfTelegramId]);
+
+  // Augment `mySeatOverlay` with the server-authoritative score so the
+  // me-seat's score chip stays in sync with the backend (mirrors how the
+  // opponent overlays pick it up below).
+  const mySeatOverlayWithScore = useMemo(() => {
+    if (!mySeatOverlay) return mySeatOverlay;
+    if (typeof myServerSeatForOverlay?.score !== 'number') return mySeatOverlay;
+    return { ...mySeatOverlay, score: myServerSeatForOverlay.score };
+  }, [mySeatOverlay, myServerSeatForOverlay]);
+
   const otherSeatsOverlay = useMemo(() => {
-    const map: Partial<Record<SeatAnchorPos, { name?: string; stack?: string; photo?: string | number }>> = {};
+    const map: Partial<
+      Record<
+        SeatAnchorPos,
+        {
+          name?: string;
+          stack?: string;
+          photo?: string | number;
+          score?: number;
+        }
+      >
+    > = {};
     for (const [seatId, seat] of Object.entries(realSeats ?? {})) {
       // Skip the local player — their data is overlaid on `bottom` by
       // `mySeatOverlay` further up. Comparing by telegramId is the
@@ -300,6 +329,10 @@ export default function GameRoom({
         name: seat.name,
         stack: typeof seat.stack === 'number' ? `$${seat.stack}` : seat.stack,
         photo: seat.photo,
+        // Server-authoritative Свара score (`SeatState.score`).
+        // Forwarded so opponents' score badges read from the backend
+        // instead of the legacy client-side recomputation.
+        ...(typeof seat.score === 'number' ? { score: seat.score } : {}),
       };
     }
     return map;
@@ -324,7 +357,7 @@ export default function GameRoom({
     spectator,
     waitForNextRound,
     onTakeSeat,
-    mySeat: mySeatOverlay,
+    mySeat: mySeatOverlayWithScore,
     otherSeats: otherSeatsOverlay,
     dealingFromServer,
     // Hand the live snapshot's seated-player count to the rotation hook so
@@ -1760,7 +1793,11 @@ export default function GameRoom({
               <SvaraBanner
                 phase={svaraPhase}
                 myDecision={svaraDecision}
-                canDecide={meInSvara && !spectator}
+                // Только не-участники свары (folded earlier) могут купить
+                // вход и видят попап join/skip. Тай-участники подтверждены
+                // сервером автоматически и не должны жать никакие кнопки.
+                canDecide={!meInSvara && !spectator}
+                isParticipant={meInSvara && !spectator}
                 joinCost={blindAmount}
                 onJoin={handleSvaraJoin}
                 onDecline={handleSvaraDecline}
