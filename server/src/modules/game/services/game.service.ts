@@ -990,7 +990,19 @@ export class GameService {
       return;
     }
 
-    const participants = gameState.svaraConfirmed || [];
+    // Подстраховка: участники свары (тай-победители раздачи) всегда
+    // должны быть подтверждены, даже если по какой-то причине список
+    // svaraConfirmed был сброшен. Не-участники остаются нетронутыми —
+    // их решение мы получаем явно через joinSvara/skipSvara.
+    if (!gameState.svaraConfirmed) gameState.svaraConfirmed = [];
+    if (!gameState.svaraDeclined) gameState.svaraDeclined = [];
+    for (const id of gameState.svaraParticipants ?? []) {
+      if (gameState.svaraConfirmed.includes(id)) continue;
+      if (gameState.svaraDeclined.includes(id)) continue;
+      gameState.svaraConfirmed.push(id);
+    }
+
+    const participants = gameState.svaraConfirmed;
 
     if (participants.length >= 2) {
       // ИСПРАВЛЕНИЕ: Проверяем, могут ли участники свары внести деньги
@@ -1161,6 +1173,16 @@ export class GameService {
 
     await new Promise((resolve) => setTimeout(resolve, 3000));
 
+    // Запускаем таймер для первого игрока новой свары. Без этого
+    // ходовой таймер не идёт, игра «зависает» сразу после рестарта
+    // свары (как в обычной startGame после ante).
+    const firstPlayer = gameState.players[gameState.currentPlayerIndex];
+    if (firstPlayer) {
+      this.startTurnTimer(roomId, firstPlayer.id);
+      gameState.timer = TURN_DURATION_SECONDS;
+      gameState.turnStartTime = Date.now();
+    }
+
     await this.redisService.setGameState(roomId, gameState);
     await this.redisService.publishGameUpdate(roomId, gameState);
   }
@@ -1205,7 +1227,12 @@ export class GameService {
         gameState.isSvara = true;
         gameState.svaraParticipants = overallWinners.map((w) => w.id);
         gameState.winners = overallWinners;
-        gameState.svaraConfirmed = [];
+        // Участники свары (тай-победители текущей раздачи) уже играют,
+        // им не нужно жать «присоединиться». Подтверждаем их сразу;
+        // не-участники (folded earlier) могут купить вход за тот же банк
+        // в течение TURN_DURATION_SECONDS, иначе мы стартуем свару только
+        // с уже подтверждёнными участниками.
+        gameState.svaraConfirmed = overallWinners.map((w) => w.id);
         gameState.svaraDeclined = [];
         gameState.svaraOriginalPot = gameState.pot; // Сохраняем изначальный банк свары
 
@@ -1217,14 +1244,33 @@ export class GameService {
         };
         gameState.log.push(svaraAction);
 
+        // Когда таймер ставок свары стартует — нужен ориентир для
+        // обратного отсчёта на клиенте (для участников панель
+        // «ждём остальных», для не-участников 15-сек попап).
+        gameState.timer = TURN_DURATION_SECONDS;
+        gameState.turnStartTime = Date.now();
+
         await this.redisService.setGameState(roomId, gameState);
         await this.redisService.publishGameUpdate(roomId, gameState);
 
+        // Если все живые игроки в комнате — участники свары (например,
+        // 2-player свара), решений ждать не от кого: запускаем
+        // resolveSvara сразу, чтобы новый раунд стартовал после
+        // SVARA-анимации (внутри startSvaraGame есть 3-сек пауза).
+        const totalPlayers = gameState.players.length;
+        const allArePartisipants =
+          gameState.svaraConfirmed.length >= totalPlayers;
+
+        // Резолвим асинхронно (без await), чтобы не блокировать
+        // вызывающий action-handler на 3 секунды паузы внутри
+        // startSvaraGame. Все мутации состояния идут через
+        // redisService.setGameState, так что параллельность безопасна.
+        const delayMs = allArePartisipants ? 0 : TURN_DURATION_SECONDS * 1000;
         const timer = setTimeout(() => {
           this.resolveSvara(roomId).catch((error) => {
             console.error(`Error resolving svara for room ${roomId}:`, error);
           });
-        }, TURN_DURATION_SECONDS * 1000);
+        }, delayMs);
         this.svaraTimers.set(roomId, timer);
       } else {
       
